@@ -1,0 +1,74 @@
+<mei xmlns="http://www.music-encoding.org/ns/mei" xmlns:xlink="http://www.w3.org/1999/xlink"
+    xml:id="##uuid##" meiversion="4.0.1">
+    <meiHead>
+        <fileDesc>
+            <titleStmt>
+                <title/>
+            </titleStmt>
+            <editionStmt>
+                <edition/>
+            </editionStmt>
+            <pubStmt />
+        </fileDesc>
+        <encodingDesc />
+        <workList>
+            <work n="1" xml:id="##uuid##">
+                <title xml:lang="de"/>
+                <title xml:lang="en"/>
+                <notesStmt/>
+                <expressionList>
+                    <expression xml:id="ewkwa-ex_edition">
+                        <title/>
+                        <classification>
+                            <termList class="#ediromCategory">
+                                <term class="ediromCategory" xml:id="dynamics">
+                                    <name xml:lang="de">Dynamik</name>
+                                    <name xml:lang="en">dynamics</name>
+                                </term>
+                                <term class="#ediromCategory" xml:id="correction">
+                                    <name xml:lang="de">Korrektur</name>
+                                    <name xml:lang="en">correction</name>
+                                </term>
+                                <term class="#ediromCategory" xml:id="articulation">
+                                    <name xml:lang="de">Spielanweisung &amp; Artikulation</name>
+                                    <name xml:lang="en">Playing instruction &amp; articulation</name>
+                                </term>
+                                <term class="#ediromCategory" xml:id="text">
+                                    <name xml:lang="de">Text</name>
+                                    <name xml:lang="en">text</name>
+                                </term>
+                                <term class="#ediromCategory" xml:id="harmony">
+                                    <name xml:lang="de">Tonsatz</name>
+                                    <name xml:lang="en">harmony</name>
+                                </term>
+                                <term class="#ediromCategory" xml:id="ed-corr">
+                                    <name xml:lang="de">Herausgeberkorrektur</name>
+                                    <name xml:lang="en">editor correction</name>
+                                </term>
+                                <term class="#ediromCategory" xml:id="layout">
+                                    <name xml:lang="de">Layout</name>
+                                    <name xml:lang="en">layout</name>
+                                </term>
+                                <term class="#ediromCategory" xml:id="rhythm">
+                                    <name xml:lang="de">Rhythmus</name>
+                                    <name xml:lang="en">rhythm</name>
+                                </term>
+                            </termList>
+                            <termList class="#ediromPriority">
+                                <term class="#ediromPriority" xml:id="prio-1">
+                                    <name xml:lang="de">Textkritische Anmerkung</name>
+                                    <name xml:lang="en">Critical remark</name>
+                                </term>
+                                <term class="#ediromPriority" xml:id="prio-2">
+                                    <name xml:lang="de">Lesart</name>
+                                    <name xml:lang="en">Reading</name>
+                                </term>
+                            </termList>
+                        </classification>
+                    </expression>
+                </expressionList>
+            </work>
+        </workList>
+    </meiHead>
+    <music />
+</mei>
