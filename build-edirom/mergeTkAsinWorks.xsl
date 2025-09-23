@@ -4,7 +4,7 @@
   <xsl:output indent="yes"/>
   
   <xsl:param name="annots" select="document('./tmp/annots.xml')"/>
-  <xsl:param name="properties" select="document('../properties.xml')" />
+  <xsl:param name="properties" select="document('../../properties.xml')" />
   
   <xsl:template match="*">
     <xsl:copy>

@@ -80,9 +80,9 @@ declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sour
 (: ####################################### :)
 (: Variables :)
 
-let $properties-file := try{doc('../properties.xml')}catch* {error(
+let $properties-file := try{doc('../../properties.xml')}catch* {error(
                   xs:QName('local:csv-error'),
-                  'Properties file could not be loaded from "' || '../properties.xml' || '". Error: ' || $err:code || ' - ' || $err:description
+                  'Properties file could not be loaded from "' || '../../properties.xml' || '". Error: ' || $err:code || ' - ' || $err:description
                   )}
 let $properties := $properties-file//property
 let $uuids := $properties-file//uuids
@@ -93,8 +93,8 @@ let $editionID := $uuids[@name = 'edition']
 let $workID := $uuids[@name = 'work']
 
 (: Documents :)
-let $inputCSV := './Konkordanz/edition.csv'
-let $sources := collection('../Quellen/?select=*.xml')
+let $inputCSV := '../../Konkordanz/edition.csv'
+let $sources := collection('../../Quellen/?select=*.xml')
 
 let $editionBaseURI := 'xmldb:exist:///db/apps/edirom-content/' || $properties[@name = 'editionHandle']/text() || '/sources/'
 

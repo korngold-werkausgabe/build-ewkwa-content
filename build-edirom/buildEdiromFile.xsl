@@ -6,7 +6,7 @@
   exclude-result-prefixes="xs" version="3.0">
 
   <xsl:output indent="yes"/>
-  <xsl:param name="properties-file" select="document('../properties.xml')"/>
+  <xsl:param name="properties-file" select="document('../../properties.xml')"/>
   <xsl:param name="editionHandle" select="$properties-file//property[@name = 'editionHandle']"/>
   <xsl:param name="uuids" select="$properties-file//uuid"/>
   <xsl:param name="nav" select="document('./tmp/nav.xml')"/>

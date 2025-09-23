@@ -3,7 +3,7 @@
     exclude-result-prefixes="xs" version="2.0">
 
     <xsl:output indent="yes" />
-    <xsl:param name="properties" select="document('../properties.xml')" />
+    <xsl:param name="properties" select="document('../../properties.xml')" />
     
     <xsl:template match="node()|@*">
         <xsl:copy>

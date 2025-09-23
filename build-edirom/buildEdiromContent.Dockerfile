@@ -1,24 +1,28 @@
 ##########################
 # Prepare edirom content #
 ##########################
-FROM ghcr.io/korngold-werkausgabe/saxon-cmd:latest
+FROM ghcr.io/korngold-werkausgabe/saxon-cmd:latest AS prepare-content
+
+ARG SCRIPT_PATH=build-content-pipeline/build-edirom
+ARG TEMPLATES_PATH=${SCRIPT_PATH}/templates
 
 WORKDIR /app
 COPY . .
 
-RUN mkdir -p Edirom/content/{critical-report,documents,edition,introduction,sources,structure}
+RUN mkdir -p Edirom/content/{critical-report,documents,edition,introduction,structure}
 
 # PRE BUILD FILES #
-RUN xquery -q:buildEdiromTkAs.xql -o:./tmp/annots.xml
-RUN xquery s:Edirom/nav.xml -q:buildNav.xql -o:./tmp/nav.xml
-RUN xquery -q:buildConnectionsByCSV.xql -o:./tmp/conc.xml
+RUN xquery -q:${SCRIPT_PATH}/buildEdiromTkAs.xql -o:${SCRIPT_PATH}/tmp/annots.xml
+RUN xquery -q:${SCRIPT_PATH}/buildConnectionsByCSV.xql -o:${SCRIPT_PATH}/tmp/conc.xml
+RUN xslt -s:Edirom/nav.xml -xsl:${SCRIPT_PATH}/buildNav.xsl -o:${SCRIPT_PATH}/tmp/nav.xml
 
 # BUILD FILES #
-RUN xslt -s:template_edirom-works.xml -q:mergeTkAsinWorks.xsl -o:Edirom/content/structure/edirom-works.xml
-RUN xslt -s:template_edirom-file.xml -q:buildEdiromFile.xsl -o:Edirom/content/structure/edirom.xml
+RUN xslt -s:${TEMPLATES_PATH}/template_edirom-works.xml -xsl:${SCRIPT_PATH}/mergeTkAsinWorks.xsl -o:Edirom/content/structure/edirom-works.xml
+RUN xslt -s:${TEMPLATES_PATH}/template_edirom-file.xml -xsl:${SCRIPT_PATH}/buildEdiromFile.xsl -o:Edirom/content/structure/edirom.xml
 
 # COPY #
-RUN mv edirom_source*.xml Edirom/content/sources
+RUN mkdir Edirom/content/sources
+RUN mv Quellen/edirom-source*.xml Edirom/content/sources
 RUN mv Edirom/local.properties Edirom/prefs.xml Edirom/content
 
 ########################
@@ -32,7 +36,7 @@ RUN apt-get update \
 RUN git clone -b develop --single-branch --recursive https://github.com/Edirom/Edirom-Edition-Packaging.git
 
 WORKDIR /Edirom-Edition-Packaging
-COPY ../Edirom/content .
+COPY --from=prepare-content /app/Edirom/content .
 
 RUN ant -Duri.edition=/Edirom-Edition-Packaging xar
 
@@ -40,4 +44,4 @@ RUN ant -Duri.edition=/Edirom-Edition-Packaging xar
 # Final output stage   #
 ########################
 FROM alpine:latest AS final
-COPY --from=build-content /Edirom-Edition-Packaging/*.xar /output/
+COPY --from=build-content /Edirom-Edition-Packaging/dist/*.xar /output/
