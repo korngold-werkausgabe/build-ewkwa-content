@@ -1,5 +1,5 @@
 <mei xmlns="http://www.music-encoding.org/ns/mei" xmlns:xlink="http://www.w3.org/1999/xlink"
-    xml:id="##uuid##" meiversion="4.0.1">
+    xml:id="###uuid###" meiversion="4.0.1">
     <meiHead>
         <fileDesc>
             <titleStmt>
@@ -8,11 +8,11 @@
             <editionStmt>
                 <edition/>
             </editionStmt>
-            <pubStmt />
+            <pubStmt/>
         </fileDesc>
-        <encodingDesc />
+        <encodingDesc/>
         <workList>
-            <work n="1" xml:id="##uuid##">
+            <work n="1" xml:id="###editionHandle###">
                 <title xml:lang="de"/>
                 <title xml:lang="en"/>
                 <notesStmt/>
@@ -31,7 +31,8 @@
                                 </term>
                                 <term class="#ediromCategory" xml:id="articulation">
                                     <name xml:lang="de">Spielanweisung &amp; Artikulation</name>
-                                    <name xml:lang="en">Playing instruction &amp; articulation</name>
+                                    <name xml:lang="en">Playing instruction &amp;
+                                        articulation</name>
                                 </term>
                                 <term class="#ediromCategory" xml:id="text">
                                     <name xml:lang="de">Text</name>
@@ -70,5 +71,5 @@
             </work>
         </workList>
     </meiHead>
-    <music />
+    <music/>
 </mei>
