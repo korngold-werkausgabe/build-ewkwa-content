@@ -1,5 +1,5 @@
 ##########################
-# Prepare Edirom Content #
+# Prepare edirom content #
 ##########################
 FROM ghcr.io/korngold-werkausgabe/saxon-cmd:latest
 
@@ -35,3 +35,24 @@ WORKDIR /Edirom-Edition-Packaging
 COPY ../Edirom/content .
 
 RUN ant -Duri.edition=/Edirom-Edition-Packaging xar
+
+######################
+# Curl Edirom Online #
+######################
+
+FROM curlimages/curl:latest AS curl-edirom
+WORKDIR /downloads
+
+RUN echo "Downloading Edirom Online Frontend"
+RUN curl -L -o eof-ewk-build.xar "https://github.com/korngold-werkausgabe/Edirom-Online-Frontend_EWK-WA/releases/download/latest/eof-ewk-latest.xar" 
+
+RUN echo "Downloading Edirom Online Backend"
+RUN curl -L -o eob-ewk-build.xar "https://github.com/korngold-werkausgabe/Edirom-Online-Backend_EWK-WA/releases/download/latest/eob-ewk-latest.xar" 
+
+#####################################
+# Run exist-db and add xar-packages #
+#####################################
+FROM stadlerpeter/existdb:6.3.0
+
+COPY --chown=wegajetty --from=curl-edirom /downloads/*.xar ${EXIST_HOME}/autodeploy/
+COPY --chown=wegajetty --from=build-content /Edirom-Edition-Packaging/dist/*.xar ${EXIST_HOME}/autodeploy/
