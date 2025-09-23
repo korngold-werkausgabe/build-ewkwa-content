@@ -22,11 +22,20 @@ declare namespace map = "http://www.w3.org/2005/xpath-functions/map";
 declare namespace math = "http://www.w3.org/2005/xpath-functions/math";
 
 declare function local:textRendition($node as node()?) as item()* {
-    <rend xmlns="http://www.music-encoding.org/ns/mei" rend="{if ($node/@rend/normalize-space() = 'it') then 'italic' else $node/@rend/normalize-space()}">{$node/normalize-space()}</rend>
+  <rend
+    xmlns="http://www.music-encoding.org/ns/mei"
+    rend="{
+        if ($node/@rend/normalize-space() = 'it') then
+          'italic'
+        else
+          $node/@rend/normalize-space()
+      }">{$node/normalize-space()}</rend>
 };
 
 declare function local:buildSiglum($node as node()?) as item()* {
-    <rend xmlns="http://www.music-encoding.org/ns/mei" rend="bold">{$node/@siglum/normalize-space()}</rend>
+  <rend
+    xmlns="http://www.music-encoding.org/ns/mei"
+    rend="bold">{$node/@siglum/normalize-space()}</rend>
 };
 
 (:~
@@ -57,17 +66,29 @@ return
 : @return Pitch name and octave.
 :)
 declare function local:buildPitch($pitch as node()*) as item()* {
-    let $pname := if (xs:int($pitch/@oct/normalize-space()) <= 2)
-                    then upper-case($pitch/@pname/normalize-space())
-                    else $pitch/@pname/normalize-space()
-    let $oct := if (xs:int($pitch/@oct/normalize-space()) >= 4)
-                  then xs:int($pitch/@oct/normalize-space()) - 3
-                  else if (xs:int($pitch/@oct/normalize-space()) >= 2)
-                  then ()
-                  else if (xs:int($pitch/@oct/normalize-space()) = 1)
-                  then (1)
-                  else ("###ERROR###")
-    return <rend xmlns="http://www.music-encoding.org/ns/mei" rend="italic">{$pname}<rend rend="superscript">{$oct}</rend></rend>
+  let $pname := if (xs:int($pitch/@oct/normalize-space()) <= 2)
+  then
+    upper-case($pitch/@pname/normalize-space())
+  else
+    $pitch/@pname/normalize-space()
+  let $oct := if (xs:int($pitch/@oct/normalize-space()) >= 4)
+  then
+    xs:int($pitch/@oct/normalize-space()) - 3
+  else
+    if (xs:int($pitch/@oct/normalize-space()) >= 2)
+    then
+      ()
+    else
+      if (xs:int($pitch/@oct/normalize-space()) = 1)
+      then
+        (1)
+      else
+        ("###ERROR###")
+  return
+    <rend
+      xmlns="http://www.music-encoding.org/ns/mei"
+      rend="italic">{$pname}<rend
+        rend="superscript">{$oct}</rend></rend>
 };
 
 
@@ -113,7 +134,9 @@ declare function local:buildSequence($sequence as node()*) as item()* {
 declare function local:buildSmufl($symbol as xs:string) as item()* {
   let $url := fn:replace($symbol, '.png', '.xml')
   return
-    <g xmlns="http://www.music-encoding.org/ns/mei" ref="{$url}">[Musikalisches Symbol]</g>
+    <g
+      xmlns="http://www.music-encoding.org/ns/mei"
+      ref="{$url}">[Musikalisches Symbol]</g>
 };
 
 (:~
@@ -201,12 +224,13 @@ declare function local:measureUri($sources as node()*, $measure as node()*) as x
     switch ($measure/name())
       case 'measure'
         return
-          let $source-url := concat($url, replace(base-uri($sourceDoc),'^(.*/)(.*?)\.\w+$','$2'))
+          let $source-url := concat($url, replace(base-uri($sourceDoc), '^(.*/)(.*?)\.\w+$', '$2'))
           let $measure-id := $sourceDoc//mei:mdiv[substring-after(@label, 'Movement ') = $measure/@mdiv/string()]//mei:measure[@label/string() = $measure/@label/string()]/@xml:id/string()
           return
             concat($source-url, '#', $measure-id)
       case 'sequence'
-        return '###ERROR###'
+        return
+          '###ERROR###'
           (:let $source-url := concat($url, base-uri($sourceDoc)(:replace(base-uri($sourceDoc),'^(.*/)(.*?)\.\w+$','$2'):))
           for $measure-label in ($measure/@label-from, $measure/@label-to)
           return
@@ -218,39 +242,38 @@ declare function local:measureUri($sources as node()*, $measure as node()*) as x
 
 declare function local:generate-uuid() as xs:string {
   let $rng := fn:random-number-generator()
-  let $hex-chars := ('0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f')
-  let $random-hex := function($length as xs:integer) {
-    string-join(for $i in 1 to $length 
-                return $hex-chars[xs:integer($rng('next')()('number') * 16) + 1], '')
+  let $hex-chars := ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f')
+  let $random-hex := function ($length as xs:integer) {
+    string-join(for $i in 1 to $length
+    return
+      $hex-chars[xs:integer($rng('next')()('number') * 16) + 1], '')
   }
-  let $pad := function($str as xs:string, $length as xs:integer) {
-    let $padding := string-join(for $i in 1 to ($length - string-length($str)) return '0', '')
-    return concat($padding, $str)
+  let $pad := function ($str as xs:string, $length as xs:integer) {
+    let $padding := string-join(for $i in 1 to ($length - string-length($str))
+    return
+      '0', '')
+    return
+      concat($padding, $str)
   }
-  return concat(
+  return
+    concat(
     $pad($random-hex(8), 8), '-',
     $pad($random-hex(4), 4), '-',
     '4', $pad($random-hex(3), 3), '-',
-    ('8','9','a','b')[xs:integer($rng('next')()('number') * 4) + 1],
+    ('8', '9', 'a', 'b')[xs:integer($rng('next')()('number') * 4) + 1],
     $pad($random-hex(3), 3), '-',
     $pad($random-hex(12), 12)
-  )
+    )
 };
-
-let $templatePath := './templates'
-let $worksTemplate := doc(concat($templatePath, '/template_edirom-works.xml'))
 
 (: Paths and input documents :)
 (: Adjust the collection  Path to your local repository path :)
 
 let $collectionPath := '../../'
 let $sources := collection(concat($collectionPath, 'Quellen/?select=*.xml'))
-(: let $inputDocs-tka := collection(concat($collectionPath, 'Textkritische-Anmerkungen/?select=*.xml&amp;recurse=yes')) :)
-let $inputDoc-tka := doc('./tka_fullScore_03.xml')
-(: let $inputDoc-work := doc(concat($collectionPath, 'Edirom/content/works/b1-5_violinkonzert_works.xml')) :)
-let $xsltStylesheetPath := './mergeTkAsinWorks.xsl'
+let $inputDocs-tka := collection(concat($collectionPath, 'Textkritische-Anmerkungen/?select=*.xml&amp;recurse=yes'))
 
-let $plist := map:merge(for $note in $inputDoc-tka//criticalNote
+let $plist := map:merge(for $note in $inputDocs-tka//criticalNote
 return
   map:entry($note/@xml:id/string(), string-join(for $measures in $note/noteText//measures
   return
@@ -265,8 +288,8 @@ let $criticalNotes :=
   type="criticalCommentary"
 >
   {
-    for $note in $inputDoc-tka//*:criticalNote
-    let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $inputDoc-tka/*:kb/@mainSource/string(), $inputDoc-tka/*:kb/@n/string()))
+    for $note in $inputDocs-tka//*:criticalNote
+    let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $inputDocs-tka/*:kb/@mainSource/string(), $inputDocs-tka/*:kb/@n/string()))
     (:      let $mainSourcePlist := "TEST":)
     return
       <annot
@@ -304,7 +327,10 @@ let $criticalNotes :=
                     local:buildSequence($node)
                 case ('musicalSymbol')
                   return
-                    if ($node/@glyph.uri) then local:buildSmufl($node/@glyph.uri) else ()
+                    if ($node/@glyph.uri) then
+                      local:buildSmufl($node/@glyph.uri)
+                    else
+                      ()
                 case ('rend')
                   return
                     local:textRendition($node)
@@ -323,4 +349,5 @@ let $criticalNotes :=
 }
 </annot>
 
-return $criticalNotes
+return
+  $criticalNotes
