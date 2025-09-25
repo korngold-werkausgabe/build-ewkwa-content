@@ -7,7 +7,7 @@
 
   <xsl:output indent="yes"/>
   <xsl:param name="properties-file" select="document('../../properties.xml')"/>
-  <xsl:param name="editionHandle" select="$properties-file//property[@name = 'editionHandle']"/>
+  <xsl:param name="editionHandle" select="$properties-file//property[@name = 'editionHandle']/text()"/>
   <xsl:param name="uuids" select="$properties-file//uuid"/>
   <xsl:param name="nav" select="document('./tmp/nav.xml')"/>
   <xsl:param name="concorances" select="document('./tmp/conc.xml')"/>
@@ -17,10 +17,17 @@
       <xsl:apply-templates select="@*[name() != 'xml:id'] | node()"/>
     </edition>
   </xsl:template>
+  
+  <xsl:template match="edirom:editionName">
+    <editionName>
+      <xsl:value-of select="$properties-file//property[@name = 'editionTitle']/text()" />
+    </editionName>
+  </xsl:template>
 
   <xsl:template match="edirom:work">
-    <work xml:id="{$uuids[@name='editionWork']/text()}">
-      <xsl:apply-templates select="@*[name() != 'xml:id'] | node()"/>
+    <work xml:id="{$uuids[@name='editionWork']/text()}"
+      xlink:href="{concat('xmldb:exist:///db/apps/edirom-content/', $editionHandle, '/structure/edirom-works.xml')}">
+      <xsl:apply-templates select="@*[not(name() = ('xml:id', 'xlink:href'))] | node()" />
     </work>
   </xsl:template>
 
