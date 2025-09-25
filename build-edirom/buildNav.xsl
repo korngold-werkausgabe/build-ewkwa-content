@@ -1,17 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xs="http://www.w3.org/2001/XMLSchema"
+<xsl:stylesheet xmlns:edirom="http://www.edirom.de/ns/1.3" 
+    xmlns="http://www.edirom.de/ns/1.3"
+    xmlns:xsl="http://www.w3.org/1999/XSL/Transform" 
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
     exclude-result-prefixes="xs" version="2.0">
 
     <xsl:output indent="yes" />
     <xsl:param name="properties" select="document('../../properties.xml')" />
     
-    <xsl:template match="node()|@*">
-        <xsl:copy>
-            <xsl:apply-templates select="node()|@*"/>
-        </xsl:copy>
+    <xsl:template match="@*|text()">
+        <xsl:copy/>
     </xsl:template>
     
     <xsl:template match="processing-instruction()"/>
+    
+    <xsl:template match="*">
+        <xsl:element name="{local-name()}" namespace="http://www.edirom.de/ns/1.3">
+            <xsl:apply-templates select="@*|node()"/>
+        </xsl:element>
+    </xsl:template>
+    
+    <xsl:template match="navigatorDefinition">
+        <navigatorDefinition>
+            <xsl:apply-templates select="@*|node()"/>
+        </navigatorDefinition>
+    </xsl:template>
     
     <xsl:template match="navigatorCategory">
         <xsl:variable name="catPos" select="count(preceding-sibling::navigatorCategory) + 1"/>
