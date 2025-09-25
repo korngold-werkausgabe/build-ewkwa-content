@@ -11,6 +11,8 @@
         </xsl:copy>
     </xsl:template>
     
+    <xsl:template match="processing-instruction()"/>
+    
     <xsl:template match="navigatorCategory">
         <xsl:variable name="catPos" select="count(preceding-sibling::navigatorCategory) + 1"/>
         <navigatorCategory xml:id="navCategory-{$catPos}">
