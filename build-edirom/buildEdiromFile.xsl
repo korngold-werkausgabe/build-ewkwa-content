@@ -13,13 +13,13 @@
   <xsl:param name="concorances" select="document('./tmp/conc.xml')"/>
 
   <xsl:template match="edirom:edition">
-    <edition xml:id="{$uuids[@name='edition']/@value}">
+    <edition xml:id="{$uuids[@name='edition']/text()}">
       <xsl:apply-templates select="@*[name() != 'xml:id'] | node()"/>
     </edition>
   </xsl:template>
 
   <xsl:template match="edirom:work">
-    <work xml:id="{$uuids[@name='work']/@value}">
+    <work xml:id="{$uuids[@name='editionWork']/text()}">
       <xsl:apply-templates select="@*[name() != 'xml:id'] | node()"/>
     </work>
   </xsl:template>
