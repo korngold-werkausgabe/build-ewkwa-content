@@ -20,9 +20,11 @@ RUN xslt -s:Edirom/nav.xml -xsl:${SCRIPT_PATH}/buildNav.xsl -o:${SCRIPT_PATH}/tm
 RUN xslt -s:${TEMPLATES_PATH}/template_edirom-works.xml -xsl:${SCRIPT_PATH}/mergeTkAsinWorks.xsl -o:Edirom/content/structure/edirom-works.xml
 RUN xslt -s:${TEMPLATES_PATH}/template_edirom-file.xml -xsl:${SCRIPT_PATH}/buildEdiromFile.xsl -o:Edirom/content/structure/edirom.xml
 
-# COPY #
+# ADD SOURCES #
 RUN mkdir Edirom/content/sources
-RUN mv Quellen/edirom-source*.xml Edirom/content/sources
+RUN find Quellen -name "edirom-source*.xml" -exec sh -c 'xslt -s:"$1" -xsl:${SCRIPT_PATH}/injectSourceIds.xsl -o:"Edirom/content/structure/sources/$1"' _ {} \;
+
+# COPY PREFS and PROPERTIES #
 RUN mv Edirom/local.properties Edirom/prefs.xml Edirom/content
 
 ########################
