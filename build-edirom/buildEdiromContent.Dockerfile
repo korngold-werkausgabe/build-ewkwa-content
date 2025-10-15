@@ -9,7 +9,11 @@ ARG TEMPLATES_PATH=${SCRIPT_PATH}/templates
 WORKDIR /app
 COPY . .
 
-RUN mkdir -p Edirom/content/{critical-report,documents,edition,introduction,structure}
+RUN mkdir -p Edirom/content/critical-report \
+    && mkdir -p Edirom/content/documents \
+    && mkdir -p Edirom/content/edition \
+    && mkdir -p Edirom/content/introduction \
+    && mkdir -p Edirom/content/structure
 
 # PRE BUILD FILES #
 RUN xquery -q:${SCRIPT_PATH}/buildEdiromTkAs.xql -o:${SCRIPT_PATH}/tmp/annots.xml
