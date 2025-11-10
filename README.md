@@ -1,4 +1,11 @@
 # Build Content Pipleine
 
 ## Build Edirom
-1. Build annots
+
+### As Submodule
+
+If the repository is integrated as submodules in a volume repository, the start script must be created once.
+
+```bash
+cp build-content-pipeline/build-edirom-content.sh build-edirom-content.sh 
+```
