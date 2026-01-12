@@ -22,7 +22,7 @@ RUN xquery -q:${SCRIPT_PATH}/buildConnectionsByCSV.xql -o:${SCRIPT_PATH}/tmp/con
 RUN xslt -s:${EDIROM_CONFIG_PATH}/nav.xml -xsl:${SCRIPT_PATH}/buildNav.xsl -o:${SCRIPT_PATH}/tmp/nav.xml
 
 # BUILD FILES #
-RUN xslt -s:${TEMPLATES_PATH}/template_edirom-works.xml -xsl:${SCRIPT_PATH}/mergeTkAsinWorks.xsl -o:Edirom/content/structure/edirom-works.xml
+RUN xslt -s:${TEMPLATES_PATH}/template_edirom-works.xml -xsl:${SCRIPT_PATH}/buildEdiromWorks.xsl -o:Edirom/content/structure/edirom-works.xml
 RUN xslt -s:${TEMPLATES_PATH}/template_edirom-file.xml -xsl:${SCRIPT_PATH}/buildEdiromFile.xsl -o:Edirom/content/structure/edirom.xml
 
 # ADD SOURCES #
@@ -51,4 +51,5 @@ RUN ant -Duri.edition=/Edirom-Edition-Packaging xar
 # Final output stage   #
 ########################
 FROM alpine:latest AS final
+COPY --from=prepare-content /app /home/debug-prepare-content
 COPY --from=build-content /Edirom-Edition-Packaging/dist/*.xar /output/
