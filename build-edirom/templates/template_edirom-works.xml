@@ -13,8 +13,7 @@
         <encodingDesc/>
         <workList>
             <work n="1" xml:id="###editionHandle###">
-                <title xml:lang="de"/>
-                <title xml:lang="en"/>
+                <title/>
                 <notesStmt/>
                 <expressionList>
                     <expression xml:id="ewkwa-ex_edition">
