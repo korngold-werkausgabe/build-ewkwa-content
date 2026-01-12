@@ -191,13 +191,13 @@ declare function local:convertToMeasuresElement($measure-string as xs:string*, $
 : @param $measures ###
 : @return ###
 :)
-declare function local:populatePlist($sources as node()*, $measures as node()) as xs:string* {
+declare function local:populatePlist($sources as node()*, $measures as node(), $editionHandle as xs:string*) as xs:string* {
   for $sub-node in $measures/*
   return
     switch ($sub-node/name())
       case 'measure'
         return
-          local:measureUri($sources, $sub-node)
+          local:measureUri($sources, $sub-node, $editionHandle)
       case 'sequence'
         return
           string-join(for $m in (xs:integer($sub-node/@label-from/string()) to xs:integer($sub-node/@label-to/string()))
@@ -205,7 +205,7 @@ declare function local:populatePlist($sources as node()*, $measures as node()) a
             local:measureUri($sources, <measure
               siglum="{$sub-node/@siglum/string()}"
               mdiv="{$sub-node/@mdiv/string()}"
-              label="{$m}"/>), ' ')
+              label="{$m}"/>, $editionHandle), ' ')
       default
       return
         ""
@@ -217,8 +217,8 @@ declare function local:populatePlist($sources as node()*, $measures as node()) a
 : @param $measure ###
 : @return ###
 :)
-declare function local:measureUri($sources as node()*, $measure as node()*) as xs:string* {
-  let $url := "xmldb:exist:///db/apps/edirom-content/violinkonzert/sources/"
+declare function local:measureUri($sources as node()*, $measure as node()*, $editionHandle as xs:string*) as xs:string* {
+  let $url := "xmldb:exist:///db/apps/edirom-content/" || $editionHandle || "/sources/"
   let $sourceDoc := $sources//mei:mei[.//mei:identifier[text() = $measure/@siglum/string()]]
   return
     switch ($measure/name())
@@ -272,12 +272,13 @@ declare function local:generate-uuid() as xs:string {
 let $collectionPath := '../../'
 let $sources := collection(concat($collectionPath, 'Quellen/?select=*.xml'))
 let $inputDocs-tka := collection(concat($collectionPath, 'Textkritische-Anmerkungen/?select=*.xml&amp;recurse=yes'))
+let $editionHandle := doc($collectionPath || 'properties.xml')//property[@name = 'editionHandle']/text()
 
 let $plist := map:merge(for $note in $inputDocs-tka//criticalNote
 return
   map:entry($note/@xml:id/string(), string-join(for $measures in $note/noteText//measures
   return
-    local:populatePlist($sources, $measures), ' '))
+    local:populatePlist($sources, $measures, $editionHandle), ' '))
 )
 (:plist="{concat(local:populatePlist($sources, $note/measures/text()), ' ', map:get($plist, $note/@xml:id/string()))}":)
 (: Build annots :)
@@ -289,7 +290,7 @@ let $criticalNotes :=
 >
   {
     for $note in $inputDocs-tka//*:criticalNote
-    let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $inputDocs-tka/*:kb/@mainSource/string(), $inputDocs-tka/*:kb/@n/string()))
+    let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $inputDocs-tka/*:kb/@mainSource/string(), $inputDocs-tka/*:kb/@n/string()), $editionHandle)
     (:      let $mainSourcePlist := "TEST":)
     return
       <annot
