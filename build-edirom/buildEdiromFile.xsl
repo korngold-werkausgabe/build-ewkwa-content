@@ -13,7 +13,7 @@
   <xsl:param name="concorances" select="document('./tmp/conc.xml')"/>
 
   <xsl:template match="edirom:edition">
-    <edition xml:id="{$uuids[@name='edition']/text()}">
+    <edition xml:id="{$uuids[@name='edition']/text()}" xmlns="http://www.edirom.de/ns/1.3">
       <xsl:apply-templates select="@*[name() != 'xml:id'] | node()"/>
     </edition>
   </xsl:template>
@@ -42,7 +42,7 @@
   </xsl:template>
 
   <xsl:template match="edirom:concordances">
-    <concordances>
+    <concordances xmlns="http://www.edirom.de/ns/1.3">
       <xsl:copy-of select="$concorances"/>
     </concordances>
   </xsl:template>
