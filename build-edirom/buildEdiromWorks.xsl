@@ -8,7 +8,7 @@
   <xsl:param name="uuid" select="$property[@name='uuids']//uuid" />
   
   <xsl:template match="mei:mei">
-    <mei:mei xml:id="{$uuid[@name='editionWork']/text()}">
+    <mei:mei xmlns="http://www.music-encoding.org/ns/mei" xml:id="{$uuid[@name='editionWork']/text()}">
       <xsl:apply-templates select="@*[name() != 'xml:id'] | node()" />
     </mei:mei>
   </xsl:template>
@@ -28,20 +28,27 @@
   </xsl:template>
   
   <xsl:template match="/mei:mei/mei:meiHead/mei:workList/mei:work">
-    <work xmlns="http://www.music-encoding.org/ns/mei" xml:id="{$uuid[@name='work']/text()}">
+    <xsl:element name="work" namespace="http://www.music-encoding.org/ns/mei">
+      <xsl:attribute name="xml:id"><xsl:value-of select="$uuid[@name='work']/text()"/></xsl:attribute>
       <xsl:apply-templates select="@*[name() != 'xml:id'] | node()" />
-    </work>
+    </xsl:element>
   </xsl:template>
   
   <xsl:template match="/mei:mei/mei:meiHead/mei:workList/mei:work/mei:title">
-    <title xml:lang="de"><xsl:value-of select="$property[@name='workTitle']/text()"/></title>
-    <title xml:lang="en"><xsl:value-of select="$property[@name='workTitle']/text()"/></title>
+    <xsl:element name="title" namespace="http://www.music-encoding.org/ns/mei">
+      <xsl:attribute name="xml:lang">de</xsl:attribute>
+      <xsl:value-of select="$property[@name='workTitle']/text()"/>
+    </xsl:element>
+    <xsl:element name="title" namespace="http://www.music-encoding.org/ns/mei">
+      <xsl:attribute name="xml:lang">en</xsl:attribute>
+      <xsl:value-of select="$property[@name='workTitle']/text()"/>
+    </xsl:element>
   </xsl:template>
   
   <xsl:template match="/mei:mei/mei:meiHead/mei:workList/mei:work/mei:notesStmt">
-    <notesStmt xmlns="http://www.music-encoding.org/ns/mei">
+    <xsl:element name="notesStmt" namespace="http://www.music-encoding.org/ns/mei">
       <xsl:copy-of select="$annots"/>
-    </notesStmt>
+    </xsl:element>
   </xsl:template>
     
   <xsl:template match="@* | node()">
