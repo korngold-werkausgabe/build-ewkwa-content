@@ -9,13 +9,14 @@ declare namespace map = "http://www.w3.org/2005/xpath-functions/map";
 
 declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sources, $editionBaseURI) {
   <connection
+    xmlns="http://www.edirom.de/ns/1.3"
     name="{$editionMeasure}"
     plist="{
         for $key at $pos in $csvHead
         let $value := $fields[$pos]
         (: sources :)
         let $source := $sources/mei:mei[descendant::mei:identifier[@type = 'siglum' and text() = $key]]
-        let $sourceID := $source/@xml:id
+        let $sourceID := $source/@xml:id/string()
         let $mdivN := tokenize($value, '_')[1]
         let $measureLabel :=
         if (contains($value, ';')) then
@@ -80,12 +81,16 @@ declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sour
 (: ####################################### :)
 (: Variables :)
 
-let $properties-file := try{doc('../../properties.xml')}catch* {error(
-                  xs:QName('local:csv-error'),
-                  'Properties file could not be loaded from "' || '../../properties.xml' || '". Error: ' || $err:code || ' - ' || $err:description
-                  )}
+let $properties-file := try {
+  doc('../../properties.xml')
+} catch * {
+  error(
+  xs:QName('local:csv-error'),
+  'Properties file could not be loaded from "' || '../../properties.xml' || '". Error: ' || $err:code || ' - ' || $err:description
+  )
+}
 let $properties := $properties-file//property
-let $uuids := $properties-file//uuids
+let $uuids := $properties-file//uuid
 
 (:  ID of Edirom edition file. :)
 let $editionID := $uuids[@name = 'edition']
@@ -101,6 +106,7 @@ let $editionBaseURI := 'xmldb:exist:///db/apps/edirom-content/' || $properties[@
 (: ####################################### :)
 return
   <concordance
+    xmlns="http://www.edirom.de/ns/1.3"
     name='concMain'>
     <names>
       <name
@@ -111,20 +117,20 @@ return
     <groups>
       <names>
         <name
-          xml:lang='de'>{$properties[@name = 'mdivs']/label[@xml:lang = 'de']}</name>
+          xml:lang='de'>{$properties[@name = 'mdivs']/*:label[@xml:lang = 'de']/text()}</name>
         <name
-          xml:lang='en'>{$properties[@name = 'mdivs']/label[@xml:lang = 'en']}</name>
+          xml:lang='en'>{$properties[@name = 'mdivs']/*:label[@xml:lang = 'en']/text()}</name>
       </names>
       {
-        for $mdiv in $properties[@name = 'mdivs']//mdiv
+        for $mdiv in $properties[@name = 'mdivs']//*:mdiv
         return
           <group
             n='{$mdiv/@n}'>
             <names>
               <name
-                xml:lang='de'>{$mdiv/title/text()} – {$mdiv/subtitle/text()}</name>
+                xml:lang='de'>{$mdiv/*:title/text()} – {$mdiv/*:subtitle/text()}</name>
               <name
-                xml:lang='en'>{$mdiv/title/text()} – {$mdiv/subtitle/text()}</name>
+                xml:lang='en'>{$mdiv/*:title/text()} – {$mdiv/*:subtitle/text()}</name>
             </names>
             <connections>{
                 (: If the CSV file exists use csv mode :)
