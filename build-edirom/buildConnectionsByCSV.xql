@@ -15,8 +15,9 @@ declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sour
         for $key at $pos in $csvHead
         let $value := $fields[$pos]
         (: sources :)
-        let $source := $sources/mei:mei[descendant::mei:identifier[@type = 'siglum' and text() = $key]]
-        let $sourceID := $source/@xml:id/string()
+        let $sourceDoc := $sources[descendant::mei:identifier[@type = 'siglum' and text() = $key]]
+        let $sourceFileName := tokenize(base-uri($sourceDoc), '/')[last()]
+        let $source := $sourceDoc/mei:mei
         let $mdivN := tokenize($value, '_')[1]
         let $measureLabel :=
         if (contains($value, ';')) then
@@ -43,11 +44,11 @@ declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sour
                   (
                   for $measure in $measureID
                   return
-                    $editionBaseURI || $sourceID || '.xml#' || $measure || ' '
+                    $editionBaseURI || $sourceFileName || '.xml#' || $measure || ' '
                   )
                 else
                   (
-                  $editionBaseURI || $sourceID || '.xml#' || $measureID || ' '
+                  $editionBaseURI || $sourceFileName || '.xml#' || $measureID || ' '
                   )
               )
             else
@@ -59,11 +60,11 @@ declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sour
                   (
                   for $measure in $measureID
                   return
-                    $editionBaseURI || $sourceID || '.xml#' || $measure || ' '
+                    $editionBaseURI || $sourceFileName || '.xml#' || $measure || ' '
                   )
                 else
                   (
-                  $editionBaseURI || $sourceID || '.xml#' || $measureID || ' '
+                  $editionBaseURI || $sourceFileName || '.xml#' || $measureID || ' '
                   )
                 return
                   $uri
