@@ -351,4 +351,4 @@ let $criticalNotes :=
 </annot>
 
 return
-  $criticalNotes
+  $criticalNotes/normalize-space()
