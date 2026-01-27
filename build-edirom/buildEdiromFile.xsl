@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<xsl:stylesheet xmlns:edirom="http://www.edirom.de/ns/1.3" xmlns="http://www.edirom.de/ns/1.3"
-  xmlns:xi="http://www.w3.org/2001/XInclude" xmlns:tei="http://www.tei-c.org/ns/1.0"
-  xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xs="http://www.w3.org/2001/XMLSchema"
-  exclude-result-prefixes="xs" version="3.0">
+<xsl:stylesheet xmlns:edirom="http://www.edirom.de/ns/1.3" xmlns="http://www.edirom.de/ns/1.3" xmlns:xi="http://www.w3.org/2001/XInclude" xmlns:tei="http://www.tei-c.org/ns/1.0" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:xs="http://www.w3.org/2001/XMLSchema" exclude-result-prefixes="xs" version="3.0">
 
   <xsl:output indent="yes"/>
   <xsl:param name="properties-file" select="document('../../properties.xml')"/>
