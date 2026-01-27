@@ -21,6 +21,17 @@ declare namespace util = "http://exist-db.org/xquery/util";
 declare namespace map = "http://www.w3.org/2005/xpath-functions/map";
 declare namespace math = "http://www.w3.org/2005/xpath-functions/math";
 
+declare function local:normalize-text-nodes($node as node()) as node() {
+  typeswitch($node)
+    case text() return text { normalize-space($node) }
+    case element() return element { node-name($node) } {
+      $node/@*,
+      for $child in $node/node()
+      return local:normalize-text-nodes($child)
+    }
+    default return $node
+};
+
 declare function local:textRendition($node as node()?) as item()* {
   <rend
     xmlns="http://www.music-encoding.org/ns/mei"
@@ -351,4 +362,4 @@ let $criticalNotes :=
 </annot>
 
 return
-  $criticalNotes/normalize-space()
+  local:normalize-text-nodes($criticalNotes)
