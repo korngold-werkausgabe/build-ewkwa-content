@@ -6,6 +6,7 @@ FROM python:3.11-slim as prepare-content
 RUN apt-get update && apt-get install -y \
     saxon \
     xquery \
+    basex \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . /app
