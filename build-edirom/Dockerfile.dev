@@ -1,0 +1,29 @@
+##########################
+# Development Dockerfile #
+# For local testing      #
+##########################
+
+FROM python:3.11-slim-bookworm
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    libxslt1.1 \
+    libxml2-utils \
+    xsltproc \
+    git \
+    curl \
+    unzip \
+    openjdk-17-jre-headless \
+    basex \
+    python3-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+RUN pip install --no-cache-dir lxml
+
+# Set working directory
+WORKDIR /app
+
+# Default command: bash for interactive testing
+CMD ["/bin/sh"]
