@@ -20,7 +20,8 @@ LOCAL_PATHS = {
     'edirom-config': Path('Edirom-Config'),
     'conc': Path('Konkordanzen'),
     'tmp': Path('tmp'),
-    'scripts': Path(__file__).parent
+    'scripts': Path(__file__).parent,
+    'sources': Path('Quellen')
 }
 
 def get_first_level_works_from_frbr(frbr_path: str) -> tuple:
@@ -33,6 +34,12 @@ def get_first_level_works_from_frbr(frbr_path: str) -> tuple:
     except Exception as e:
         print(f"Error parsing {frbr_path}: {e}", file=sys.stderr)
         return []
+    
+def get_second_level_works(work: etree._Element) -> set:
+    """ Get second-level works if the first-level work is a collection """
+    if work.xpath('./@type', namespaces=NAMESPACES)[0] == 'collection':
+        return work.xpath('./mei:componentList//mei:work[@type="singleton"]', namespaces=NAMESPACES)
+    return []
     
 def get_nav(work: etree._Element) -> str:
     """ Get filename of nav.xml for a given first-level work """
@@ -47,16 +54,20 @@ def get_nav(work: etree._Element) -> str:
 
     return get_related_file(nav_id, LOCAL_PATHS['edirom-config'], '*.xml', 'by_id') if nav_id else None
 
-def get_concordances(work: etree._Element) -> set:
+def get_concordances(work: etree._Element) -> list:
     """ Get correct concordance.csv for first-level work """
-    results = set()
+    results = []
     if work.xpath('./@type', namespaces=NAMESPACES)[0] == 'collection':
-        for sub_work in work.xpath('./mei:componentList//mei:work[@type="singleton"]', namespaces=NAMESPACES):
+        for sub_work in get_second_level_works(work):
             edition_slug = sub_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
-            results.add(get_related_file(edition_slug, LOCAL_PATHS['conc'], '*.csv', 'by_filename') if edition_slug else None)
+            file = get_related_file(edition_slug, LOCAL_PATHS['conc'], '*.csv', 'by_filename')
+            if file:
+                results.append(file)
     else:
         edition_slug = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
-        results.add(get_related_file(edition_slug, LOCAL_PATHS['conc'], '*.csv', 'by_filename') if edition_slug else None)
+        file = get_related_file(edition_slug, LOCAL_PATHS['conc'], '*.csv', 'by_filename')
+        if file:
+            results.append(file)
     return results
 
 def get_related_file(search_string, path, file_type, search_type: str) -> str:
@@ -79,7 +90,7 @@ def build_nav(nav_path, edition_slug: str) -> str:
     """ Call buildNav.xsl with editionSlug parameter """
     try:
         build_nav_xsl = LOCAL_PATHS['scripts'] / 'buildNav.xsl'
-        nav_path_abs = Path(nav_path).resolve()  # Absoluter Pfad
+        nav_path_abs = Path(nav_path).resolve()  # Absolut path
         
         result = subprocess.run([
             'xsltproc',
@@ -92,6 +103,41 @@ def build_nav(nav_path, edition_slug: str) -> str:
     except subprocess.CalledProcessError as e:
         print(f"Error running buildNav.xsl: {e.stderr}", file=sys.stderr)
         return None
+    
+def build_concordances(conc_files, groups_titles: list, sources_path: str, edition_slug: str) -> str:
+    """ Call buildConnectionsByCSV.xql with concordance files and sources using basex """
+    try:
+        if not conc_files:
+            print(f"  No concordance files provided for '{edition_slug}'")
+            return None
+        
+        build_concordances_xql = LOCAL_PATHS['scripts'] / 'buildConnectionsByCSV.xql'
+        csv_paths = ';'.join([str(LOCAL_PATHS['conc'] / file) for file in conc_files])
+        sources_path_abs = Path(sources_path).resolve()
+        
+        result = subprocess.run([
+            'basex',
+            f'-b csvPathsString={csv_paths}',
+            f'-b sourcesPath={sources_path_abs}',
+            f'-b editionHandle={edition_slug}',
+            f'-b propertiesPath={Path("properties.xml").resolve()}',
+            f'-b groupTitles=<titles><title xml:lang="de">{groups_titles["de"]}</title><title xml:lang="en">{groups_titles["en"]}</title></titles>',
+            str(build_concordances_xql)
+        ], capture_output=True, text=True, check=True)
+        print(f"  buildConnectionsByCSV.xql processed for '{edition_slug}'")
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        print(f"Error running buildConnectionsByCSV.xql: {e.stderr}", file=sys.stderr)
+        return None
+
+def create_file(content: str, output_path: Path):
+    """ Helper function to create output files """
+    try:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        print(f"  File created at {output_path}")
+    except Exception as e:
+        print(f"Error creating file {output_path}: {e}", file=sys.stderr)
 
 def main():
     if not LOCAL_PATHS['frbr'].exists():
@@ -119,11 +165,23 @@ def main():
             nav_output = build_nav(LOCAL_PATHS['edirom-config'] / nav_file, edition_slug)
             if nav_output:
                 output_path = tmp_path / f"{edition_slug}_nav.xml"
-                with open(output_path, 'w', encoding='utf-8') as f:
-                    f.write(nav_output)
-                print(f"  Nav output saved to {output_path}")
+                create_file(nav_output, output_path)
             else:
                 print(f"  WARNING: No output from buildNav.xsl for {nav_file}")
+
+        if conc_files:
+            title_de = work.xpath('./mei:titleStmt/mei:title[@xml:lang="de"]/text()', namespaces=NAMESPACES)
+            title_en = work.xpath('./mei:titleStmt/mei:title[@xml:lang="en"]/text()', namespaces=NAMESPACES)
+            groups_titles = {
+                'de': title_de,
+                'en': title_en
+            }   
+            concordance_output = build_concordances(conc_files, groups_titles, LOCAL_PATHS['sources'], edition_slug)
+            if concordance_output:
+                output_path = tmp_path / f"{edition_slug}_concordance.xml"
+                create_file(concordance_output, output_path)
+            else:
+                print(f"  WARNING: No output from buildConnectionsByCSV.xql")
 
 if __name__ == "__main__":
     main()

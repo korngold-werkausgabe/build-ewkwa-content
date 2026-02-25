@@ -5,7 +5,16 @@ declare namespace tei = "http://www.tei-c.org/ns/1.0";
 declare namespace map = "http://www.w3.org/2005/xpath-functions/map";
 
 (: ####################################### :)
-(: Functions :)
+(: External Parameters :)
+
+declare variable $propertiesPath as xs:string external;
+declare variable $csvPathsString as xs:string external;
+declare variable $sourcesPath as xs:string external;
+declare variable $editionHandle as xs:string external;
+declare variable $subGroups as xs:string external;
+declare variable $groupTitles as xs:string external;
+
+(: ####################################### :)
 
 declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sources, $editionBaseURI) {
   <connection
@@ -79,15 +88,25 @@ declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sour
       }"/>
 };
 
+(: Helper function to find and load the correct CSV for a given mdiv number :)
+declare function local:getCsvForMdiv($mdivN as xs:string, $csvPaths as xs:string*) as xs:string? {
+  let $matching := $csvPaths[contains(., '-' || $mdivN || '_')]
+  return
+    if ($matching) then 
+      text { $matching[1] }
+    else 
+      ()
+};
+
 (: ####################################### :)
 (: Variables :)
 
 let $properties-file := try {
-  doc('../../properties.xml')
+  doc($propertiesPath)
 } catch * {
   error(
   xs:QName('local:csv-error'),
-  'Properties file could not be loaded from "' || '../../properties.xml' || '". Error: ' || $err:code || ' - ' || $err:description
+  'Properties file could not be loaded from "' || $propertiesPath || '". Error: ' || $err:code || ' - ' || $err:description
   )
 }
 let $properties := $properties-file//property
@@ -98,11 +117,12 @@ let $editionID := $uuids[@name = 'edition']
 (:  ID of MEI work file. :)
 let $workID := $uuids[@name = 'work']
 
-(: Documents :)
-let $inputCSV := '../../Konkordanz/edition.csv'
-let $sources := collection('../../Quellen/?select=*.xml')
+(: Parse multiple CSV paths from semicolon-separated string :)
+let $csvPaths := if ($csvPathsString != '') then tokenize($csvPathsString, ';') else ()
+let $sources := collection($sourcesPath)
 
-let $editionBaseURI := 'xmldb:exist:///db/apps/edirom-content/' || $properties[@name = 'editionHandle']/text() || '/sources/'
+let $editionHandle := if ($editionHandle != '') then $editionHandle else $properties[@name = 'editionHandle']/text()
+let $editionBaseURI := 'xmldb:exist:///db/apps/edirom-content/' || $editionHandle || '/sources/'
 
 (: ####################################### :)
 return
@@ -118,20 +138,20 @@ return
     <groups>
       <names>
         <name
-          xml:lang='de'>{$properties[@name = 'mdivs']/*:label[@xml:lang = 'de']/text()}</name>
+          xml:lang='de'>{$groupTitles/title[xml:lang="de"]}</name>
         <name
-          xml:lang='en'>{$properties[@name = 'mdivs']/*:label[@xml:lang = 'en']/text()}</name>
+          xml:lang='en'>{$groupTitles/title[xml:lang="en"]}</name>
       </names>
       {
-        for $mdiv in $properties[@name = 'mdivs']//*:mdiv
+        for $group in $subGroups
         return
           <group
-            n='{$mdiv/@n}'>
+            n='{$group/num/text()}'>
             <names>
               <name
-                xml:lang='de'>{$mdiv/*:title/text()} – {$mdiv/*:subtitle/text()}</name>
+                xml:lang='de'>{$group/title[@type='main' and xml:lang='de']} – {$group/*:title[@type='sub' and xml:lang='de']}</name>
               <name
-                xml:lang='en'>{$mdiv/*:title/text()} – {$mdiv/*:subtitle/text()}</name>
+                xml:lang='en'>{$group/title[@type='main' and xml:lang='en']} – {$group/*:title[@type='sub' and xml:lang='en']}</name>
             </names>
             <connections>{
                 (: If the CSV file exists use csv mode :)
