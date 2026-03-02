@@ -10,9 +10,10 @@ declare namespace map = "http://www.w3.org/2005/xpath-functions/map";
 declare variable $propertiesPath as xs:string external;
 declare variable $csvPathsString as xs:string external;
 declare variable $sourcesPath as xs:string external;
-declare variable $editionHandle as xs:string external;
+declare variable $editionSlug as xs:string external;
 declare variable $subGroups as xs:string external;
-declare variable $groupTitles as xs:string external;
+declare variable $groupsTitleDe as xs:string external;
+declare variable $groupsTitleEn as xs:string external;
 
 (: ####################################### :)
 
@@ -88,41 +89,14 @@ declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sour
       }"/>
 };
 
-(: Helper function to find and load the correct CSV for a given mdiv number :)
-declare function local:getCsvForMdiv($mdivN as xs:string, $csvPaths as xs:string*) as xs:string? {
-  let $matching := $csvPaths[contains(., '-' || $mdivN || '_')]
-  return
-    if ($matching) then 
-      text { $matching[1] }
-    else 
-      ()
-};
-
 (: ####################################### :)
 (: Variables :)
 
-let $properties-file := try {
-  doc($propertiesPath)
-} catch * {
-  error(
-  xs:QName('local:csv-error'),
-  'Properties file could not be loaded from "' || $propertiesPath || '". Error: ' || $err:code || ' - ' || $err:description
-  )
-}
-let $properties := $properties-file//property
-let $uuids := $properties-file//uuid
-
-(:  ID of Edirom edition file. :)
-let $editionID := $uuids[@name = 'edition']
-(:  ID of MEI work file. :)
-let $workID := $uuids[@name = 'work']
-
-(: Parse multiple CSV paths from semicolon-separated string :)
-let $csvPaths := if ($csvPathsString != '') then tokenize($csvPathsString, ';') else ()
+(: Parse JSON structure from csvPathsString :)
+let $csvData := if ($csvPathsString != '') then parse-json($csvPathsString) else ()
 let $sources := collection($sourcesPath)
 
-let $editionHandle := if ($editionHandle != '') then $editionHandle else $properties[@name = 'editionHandle']/text()
-let $editionBaseURI := 'xmldb:exist:///db/apps/edirom-content/' || $editionHandle || '/sources/'
+let $editionBaseURI := 'xmldb:exist:///db/apps/edirom-content/' || $editionSlug || '/sources/'
 
 (: ####################################### :)
 return
@@ -137,51 +111,47 @@ return
     </names>
     <groups>
       <names>
-        <name
-          xml:lang='de'>{$groupTitles/title[xml:lang="de"]}</name>
-        <name
-          xml:lang='en'>{$groupTitles/title[xml:lang="en"]}</name>
+        <name xml:lang='de'>{$groupsTitleDe}</name>
+        <name xml:lang='en'>{$groupsTitleEn}</name>
       </names>
       {
-        for $group in $subGroups
+        for $csvEntry in $csvData?*
         return
-          <group
-            n='{$group/num/text()}'>
-            <names>
-              <name
-                xml:lang='de'>{$group/title[@type='main' and xml:lang='de']} – {$group/*:title[@type='sub' and xml:lang='de']}</name>
-              <name
-                xml:lang='en'>{$group/title[@type='main' and xml:lang='en']} – {$group/*:title[@type='sub' and xml:lang='en']}</name>
-            </names>
-            <connections>{
-                (: If the CSV file exists use csv mode :)
-                try {
-                  (: CSV handeling :)
-                  let $csvText := fn:unparsed-text($inputCSV)
-                  let $csvLines := tokenize($csvText, '\n')
-                  let $csvHead := tokenize($csvLines[1], ',')
-                  let $csvBody := remove($csvLines, 1)
-                  
-                  for $line in $csvBody
-                  let $fields := tokenize($line, ',')
-                  
-                  let $mdivN := tokenize($fields[1], '_')[1]
-                  let $editionMeasure := tokenize($fields[1], '_')[2]
-                  return
-                    if ($mdivN = $mdiv/@n) then
-                      (local:buildConnection($editionMeasure, $csvHead, $fields, $sources, $editionBaseURI))
-                    else
-                      ()
-                }
-                catch * {
-                  error(
-                  xs:QName('local:csv-error'),
-                  'CSV file could not be loaded from "' || $inputCSV || '". Error: ' || $err:code || ' - ' || $err:description
-                  )
-                }
-              }
-            </connections>
-          </group>
+          try {
+            let $csvText := fn:unparsed-text($csvEntry?file)
+            let $csvLines := tokenize($csvText, '\n')
+            let $csvHead := tokenize($csvLines[1], ',')
+            let $csvBody := remove($csvLines, 1)
+            return
+              <group name='{$csvEntry?title_de}'>
+                <names>
+                  <name xml:lang='de'>{$csvEntry?title_de}</name>
+                  <name xml:lang='en'>{$csvEntry?title_en}</name>
+                </names>
+                <connections label="Takt">
+                  <labels>
+                    <label xml:lang="de">Takt</label>
+                    <label xml:lang="en">Measure</label>
+                  </labels>
+                  {
+                    for $line in $csvBody[string-length(normalize-space(.)) > 0]
+                    let $fields := tokenize($line, ',')
+                    let $editionMeasure := $fields[1]
+                    return
+                      if (normalize-space($editionMeasure)) then
+                        local:buildConnection($editionMeasure, $csvHead, $fields, $sources, $editionBaseURI)
+                      else
+                        ()
+                  }
+                </connections>
+              </group>
+          }
+          catch * {
+            error(
+              xs:QName("local:csv-error"),
+              concat("CSV file could not be loaded from ", $csvEntry?file, ". Error: ", $err:code, " - ", $err:description)
+            )
+          }
       }
     </groups>
   </concordance>

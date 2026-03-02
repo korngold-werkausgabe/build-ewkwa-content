@@ -54,21 +54,36 @@ def get_nav(work: etree._Element) -> str:
 
     return get_related_file(nav_id, LOCAL_PATHS['edirom-config'], '*.xml', 'by_id') if nav_id else None
 
-def get_concordances(work: etree._Element) -> list:
-    """ Get correct concordance.csv for first-level work """
+def get_concordances(work: etree._Element) -> str:
+    """ Get correct concordance.csv for first-level work and return as JSON string """
+    import json
     results = []
     if work.xpath('./@type', namespaces=NAMESPACES)[0] == 'collection':
         for sub_work in get_second_level_works(work):
             edition_slug = sub_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
+            title_de = sub_work.xpath('./mei:title[@xml:lang="de"]/text()', namespaces=NAMESPACES)
+            title_en = sub_work.xpath('./mei:title[@xml:lang="en"]/text()', namespaces=NAMESPACES)
             file = get_related_file(edition_slug, LOCAL_PATHS['conc'], '*.csv', 'by_filename')
             if file:
-                results.append(file)
+                results.append({
+                    "title_de": title_de[0] if title_de else "", 
+                    "title_en": title_en[0] if title_en else "", 
+                    "file": (LOCAL_PATHS['conc'] / file).resolve().as_uri()
+                })
     else:
-        edition_slug = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
-        file = get_related_file(edition_slug, LOCAL_PATHS['conc'], '*.csv', 'by_filename')
-        if file:
-            results.append(file)
-    return results
+        for mdiv in work.xpath('.//mei:contentItem[@type="mdiv"]', namespaces=NAMESPACES):
+            edition_slug = mdiv.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
+            title_de = mdiv.xpath('.//mei:title[@xml:lang="de"]/text()', namespaces=NAMESPACES)[0]
+            title_en = mdiv.xpath('.//mei:title[@xml:lang="en"]/text()', namespaces=NAMESPACES)[0]
+
+            file = get_related_file(edition_slug, LOCAL_PATHS['conc'], '*.csv', 'by_filename')
+            if file:
+                results.append({
+                    "title_de": title_de if title_de else "", 
+                    "title_en": title_en if title_en else "", 
+                    "file": (LOCAL_PATHS['conc'] / file).resolve().as_uri()
+                })
+    return json.dumps(results) if results else None
 
 def get_related_file(search_string, path, file_type, search_type: str) -> str:
     """ Helper function to find related files (nav, cnl, etc.) based on file name or ID """
@@ -104,24 +119,24 @@ def build_nav(nav_path, edition_slug: str) -> str:
         print(f"Error running buildNav.xsl: {e.stderr}", file=sys.stderr)
         return None
     
-def build_concordances(conc_files, groups_titles: list, sources_path: str, edition_slug: str) -> str:
-    """ Call buildConnectionsByCSV.xql with concordance files and sources using basex """
+def build_concordances(conc_json: str, groups_titles: list, sources_path: str, edition_slug: str) -> str:
+    """ Call buildConnectionsByCSV.xql with concordance JSON and sources using basex """
     try:
-        if not conc_files:
+        if not conc_json:
             print(f"  No concordance files provided for '{edition_slug}'")
             return None
         
         build_concordances_xql = LOCAL_PATHS['scripts'] / 'buildConnectionsByCSV.xql'
-        csv_paths = ';'.join([str(LOCAL_PATHS['conc'] / file) for file in conc_files])
         sources_path_abs = Path(sources_path).resolve()
         
         result = subprocess.run([
             'basex',
-            f'-b csvPathsString={csv_paths}',
+            f'-b csvPathsString={conc_json}',
             f'-b sourcesPath={sources_path_abs}',
-            f'-b editionHandle={edition_slug}',
+            f'-b editionSlug={edition_slug}',
             f'-b propertiesPath={Path("properties.xml").resolve()}',
-            f'-b groupTitles=<titles><title xml:lang="de">{groups_titles["de"]}</title><title xml:lang="en">{groups_titles["en"]}</title></titles>',
+            f'-b groupsTitleDe={groups_titles["de"]}',
+            f'-b groupsTitleEn={groups_titles["en"]}',
             str(build_concordances_xql)
         ], capture_output=True, text=True, check=True)
         print(f"  buildConnectionsByCSV.xql processed for '{edition_slug}'")
@@ -170,11 +185,11 @@ def main():
                 print(f"  WARNING: No output from buildNav.xsl for {nav_file}")
 
         if conc_files:
-            title_de = work.xpath('./mei:titleStmt/mei:title[@xml:lang="de"]/text()', namespaces=NAMESPACES)
-            title_en = work.xpath('./mei:titleStmt/mei:title[@xml:lang="en"]/text()', namespaces=NAMESPACES)
+            title_de = work.xpath('./mei:title[@xml:lang="de"]/text()', namespaces=NAMESPACES)
+            title_en = work.xpath('./mei:title[@xml:lang="en"]/text()', namespaces=NAMESPACES)
             groups_titles = {
-                'de': title_de,
-                'en': title_en
+                'de': title_de[0] if title_de else '',
+                'en': title_en[0] if title_en else ''
             }   
             concordance_output = build_concordances(conc_files, groups_titles, LOCAL_PATHS['sources'], edition_slug)
             if concordance_output:
