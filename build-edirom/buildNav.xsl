@@ -15,7 +15,7 @@
     
     <xsl:template match="*">
         <xsl:element name="{local-name()}" namespace="http://www.edirom.de/ns/1.3">
-            <xsl:apply-templates select="@*|node()"/>
+            <xsl:apply-templates select="@*[name() != 'xml:id' and name() != 'sortNo']|node()"/>
         </xsl:element>
     </xsl:template>
     
@@ -29,7 +29,7 @@
         <xsl:variable name="catPos" select="count(preceding-sibling::navigatorCategory) + 1"/>
         <navigatorCategory>
             <xsl:attribute name="xml:id">navCategory-<xsl:value-of select="$catPos"/></xsl:attribute>
-            <xsl:apply-templates select="@*|node()"/>
+            <xsl:apply-templates select="@*[name() != 'xml:id' and name() != 'sortNo']|node()"/>
         </navigatorCategory>
     </xsl:template>
     

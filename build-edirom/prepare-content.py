@@ -12,7 +12,8 @@ import sys
 # XML namespaces
 NAMESPACES = {
     'mei': 'http://www.music-encoding.org/ns/mei',
-    'xml': 'http://www.w3.org/XML/1998/namespace'
+    'xml': 'http://www.w3.org/XML/1998/namespace',
+    'edirom': 'http://www.edirom.de/ns/1.3',
 }
 
 LOCAL_PATHS = {
@@ -21,7 +22,8 @@ LOCAL_PATHS = {
     'conc': Path('Konkordanzen'),
     'tmp': Path('tmp'),
     'scripts': Path(__file__).parent,
-    'sources': Path('Quellen')
+    'sources': Path('Quellen'),
+    'templates': Path('build-ewkwa-content') / 'build-edirom' / 'templates'
 }
 
 def get_first_level_works_from_frbr(frbr_path: str) -> tuple:
@@ -113,17 +115,17 @@ def build_nav(nav_path, edition_slug: str) -> str:
             str(build_nav_xsl),
             str(nav_path_abs)
         ], capture_output=True, text=True, check=True)
-        print(f"  buildNav.xsl processed for '{edition_slug}'")
+        print(f"      [OK] buildNav.xsl processed")
         return result.stdout
     except subprocess.CalledProcessError as e:
-        print(f"Error running buildNav.xsl: {e.stderr}", file=sys.stderr)
+        print(f"      [FAIL] [E1] buildNav.xsl failed: {e.stderr}", file=sys.stderr)
         return None
     
 def build_concordances(conc_json: str, groups_titles: list, sources_path: str, edition_slug: str) -> str:
     """ Call buildConnectionsByCSV.xql with concordance JSON and sources using basex """
     try:
         if not conc_json:
-            print(f"  No concordance files provided for '{edition_slug}'")
+            print(f"      [FAIL] [E2] No concordance files provided", file=sys.stderr)
             return None
         
         build_concordances_xql = LOCAL_PATHS['scripts'] / 'buildConnectionsByCSV.xql'
@@ -139,64 +141,157 @@ def build_concordances(conc_json: str, groups_titles: list, sources_path: str, e
             f'-b groupsTitleEn={groups_titles["en"]}',
             str(build_concordances_xql)
         ], capture_output=True, text=True, check=True)
-        print(f"  buildConnectionsByCSV.xql processed for '{edition_slug}'")
+        print(f"      [OK] buildConnectionsByCSV.xql processed")
         return result.stdout
     except subprocess.CalledProcessError as e:
-        print(f"Error running buildConnectionsByCSV.xql: {e.stderr}", file=sys.stderr)
+        print(f"      [FAIL] [E3] buildConnectionsByCSV.xql failed: {e.stderr}", file=sys.stderr)
         return None
-
-def create_file(content: str, output_path: Path):
-    """ Helper function to create output files """
-    try:
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        print(f"  File created at {output_path}")
-    except Exception as e:
-        print(f"Error creating file {output_path}: {e}", file=sys.stderr)
-
-def main():
-    if not LOCAL_PATHS['frbr'].exists():
-        print(f"Error: {LOCAL_PATHS['frbr']} not found", file=sys.stderr)
-        sys.exit(1)
     
-    print("Preparation of Edirom content from frbr-tree.xml")
-    print("=" * 60)
+def build_edirom_file(works: list) -> bool:
+    """ 
+    Build Edirom file with dependency tracking using Early Return Pattern.
+    Returns True if successful, False if any step fails.
+    Handles both Collection and Singleton work types differently.
+    """
+    works_wrapper = etree.Element('{%s}works' % NAMESPACES['edirom'], nsmap={None: NAMESPACES['edirom']})
 
-    first_level_works = get_first_level_works_from_frbr(LOCAL_PATHS['frbr'])
-
-    for work in first_level_works:
-        print(f"\nProcessing work {work.xpath('./@xml:id', namespaces=NAMESPACES)[0]}")
-
+    for xid, work in enumerate(works):
+        work_type = work.xpath('./@type', namespaces=NAMESPACES)[0]
         edition_slug = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
+        edition_name = work.xpath('./mei:expressionList/mei:expression/mei:title/text()', namespaces=NAMESPACES)[0]
+        edition_id = work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0]
+        # Create tmp directory for this edition
+        tmp_path = LOCAL_PATHS['tmp'] / edition_slug
+        tmp_path.mkdir(parents=True, exist_ok=True)
+    
+        # Step 1: Build Nav
+        print(f"  +-- Step 1: Build Navigation ({work_type})")
         nav_file = get_nav(work)
-        conc_files = get_concordances(work)
-
-        tmp_path = LOCAL_PATHS['tmp'] / edition_slug if edition_slug else None
-        if tmp_path:
-            tmp_path.mkdir(parents=True, exist_ok=True)
-            print(f"  Created tmp directory {tmp_path} for edition '{edition_slug}'")
-
-        if nav_file:
+        if not nav_file:
+            print(f"  |   [WARN] [W4] No nav file found - using empty fallback", file=sys.stderr)
+            nav_output = "<navigatorDefinition/>"
+        else:
+            print(f"      Found: {nav_file}")
             nav_output = build_nav(LOCAL_PATHS['edirom-config'] / nav_file, edition_slug)
-            if nav_output:
-                output_path = tmp_path / f"{edition_slug}_nav.xml"
-                create_file(nav_output, output_path)
+            if not nav_output:
+                print(f"  |   [WARN] [W4b] build_nav failed - using empty fallback", file=sys.stderr)
+                nav_output = "<navigatorDefinition/>"
+        
+        # Save nav output to tmp file
+        nav_path = tmp_path / f"{edition_slug}_nav.xml"
+        create_file(nav_output, nav_path)
+        print(f"      [OK] Navigation complete\n")
+        
+        # Step 2: Build Concordances
+        print(f"  +-- Step 2: Build Concordances ({work_type})")
+        conc_files = get_concordances(work)
+        if not conc_files:
+            print(f"  |   [WARN] [W5] No concordance files found - using empty fallback", file=sys.stderr)
+            concordance_output = "<concordances/>"
+        else:
+            conc_count = len(eval(conc_files))
+            print(f"      Found: {conc_count} concordance file(s)")
+            
+            # Get group titles based on work type
+            if work_type == 'collection':
+                title_de = work.xpath('./mei:title[@xml:lang="de"]/text()', namespaces=NAMESPACES)
+                title_en = work.xpath('./mei:title[@xml:lang="en"]/text()', namespaces=NAMESPACES)
             else:
-                print(f"  WARNING: No output from buildNav.xsl for {nav_file}")
-
-        if conc_files:
-            title_de = work.xpath('./mei:title[@xml:lang="de"]/text()', namespaces=NAMESPACES)
-            title_en = work.xpath('./mei:title[@xml:lang="en"]/text()', namespaces=NAMESPACES)
+                # Singleton: titles come from contentItem
+                title_de = work.xpath('./mei:contentItem[@type="mdiv"]/mei:title[@xml:lang="de"]/text()', namespaces=NAMESPACES)
+                title_en = work.xpath('./mei:contentItem[@type="mdiv"]/mei:title[@xml:lang="en"]/text()', namespaces=NAMESPACES)
+            
             groups_titles = {
                 'de': title_de[0] if title_de else '',
                 'en': title_en[0] if title_en else ''
-            }   
+            }
+            
             concordance_output = build_concordances(conc_files, groups_titles, LOCAL_PATHS['sources'], edition_slug)
-            if concordance_output:
-                output_path = tmp_path / f"{edition_slug}_concordance.xml"
-                create_file(concordance_output, output_path)
-            else:
-                print(f"  WARNING: No output from buildConnectionsByCSV.xql")
+            if not concordance_output:
+                print(f"  |   [WARN] [W5b] build_concordances failed - using empty fallback", file=sys.stderr)
+                concordance_output = "<concordances/>"
+            
+            # Save concordance output to tmp file
+            conc_path = tmp_path / f"{edition_slug}_concordance.xml"
+            create_file(concordance_output, conc_path)
+            print(f"      [OK] Concordance complete\n")
+
+        # Build work element in edirom namespace (outside if/else to ensure always created)
+        work_xml_id = work.xpath('./@xml:id', namespaces=NAMESPACES)[0]
+        work_element = etree.Element(
+            '{%s}work' % NAMESPACES['edirom'], 
+            attrib={
+                '{%s}id' % NAMESPACES['xml']: work_xml_id, 
+                'sortNo': str(xid + 1)
+            }
+        )
+
+        # Add navigation (guaranteed to have valid XML from fallback)
+        nav_element = etree.fromstring(nav_output)
+        work_element.append(nav_element)
+        
+        work_element.append(etree.Element('{%s}searchWindowConfig' % NAMESPACES['edirom']))
+        
+        # Add concordances (guaranteed to have valid XML from fallback)
+        concordances_element = etree.Element('{%s}concordances' % NAMESPACES['edirom'])
+        conc_element = etree.fromstring(concordance_output)
+        concordances_element.append(conc_element)
+        
+        work_element.append(concordances_element)
+        works_wrapper.append(work_element)
+            
+    works_file_path = LOCAL_PATHS['tmp'] / "works.xml"
+    create_file(etree.tostring(works_wrapper, encoding='unicode', pretty_print=True), works_file_path)
+
+    # Step 3: Build Edirom File
+    try:
+        build_edirom_file_xsl = LOCAL_PATHS['scripts'] / 'buildEdiromFile.xsl'
+        edirom_file_template_path = (LOCAL_PATHS['templates'] / 'template_edirom-file.xml').resolve()
+
+        result = subprocess.run([
+            'xsltproc',
+            '--stringparam', 'editionId', edition_id,
+            '--stringparam', 'editionName', edition_name,
+            '--stringparam', 'editionPrefsPath', edition_slug,
+            '--stringparam', 'editionWorksPath', str(works_file_path.resolve()),
+            str(build_edirom_file_xsl),
+            str(edirom_file_template_path),
+        ], capture_output=True, text=True, check=True)
+        print(f"      [OK] buildEdiromFile.xsl processed")
+        # Save with XML formatting
+        create_file(result.stdout, LOCAL_PATHS['tmp'] / "edition.xml", format_xml=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"      [FAIL] [E1] buildEdiromFile.xsl failed: {e.stderr}", file=sys.stderr)
+        return False
+
+def create_file(content: str, output_path: Path, format_xml: bool = False):
+    """ Helper function to create output files """
+    try:
+        # Format XML if requested
+        if format_xml:
+            tree = etree.fromstring(content.encode('utf-8'))
+            content = etree.tostring(tree, encoding='unicode', pretty_print=True, xml_declaration=True)
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        print(f"      [OK] Saved: {output_path.name}")
+    except Exception as e:
+        sys.exit(1)
+
+def main():
+    print("=" * 70)
+    print("Preparation of Edirom Content from frbr-tree.xml")
+    print("=" * 70)
+
+    first_level_works = get_first_level_works_from_frbr(LOCAL_PATHS['frbr'])
+    print(f"\nFound {len(first_level_works)} work(s) to process\n")
+
+    # Build all dependencies with early return on failure
+    if build_edirom_file(first_level_works):
+        print(f"  [OK] READY: Edition prepared for next steps\n")
+    else:
+        print(f"  [FAIL] FAILED: Edition skipped due to dependency errors\n")
 
 if __name__ == "__main__":
     main()
