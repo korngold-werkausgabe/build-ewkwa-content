@@ -6,6 +6,7 @@
 
     <xsl:output indent="yes" />
     <xsl:param name="editionSlug"></xsl:param>
+    <xsl:param name="volSlug"></xsl:param>
     
     <xsl:template match="@*|text()">
         <xsl:copy/>
@@ -40,8 +41,7 @@
         <navigatorItem>
             <xsl:attribute name="xml:id"><xsl:value-of select="$editionSlug"/>_item_<xsl:value-of select="$catPos"/>_<xsl:value-of select="$itemPos"/></xsl:attribute>
             <xsl:attribute name="sortNo"><xsl:value-of select="$itemPos"/></xsl:attribute>
-            <xsl:attribute name="targets">xmldb:exist:///db/apps/edirom-content/<xsl:value-of select="$editionSlug"/>/...</xsl:attribute>
-            <xsl:apply-templates select="@*[name() != 'targets']|node()"/>
+<xsl:attribute name="targets">xmldb:exist:///db/apps/edirom-content/<xsl:value-of select="$volSlug"/>/<xsl:value-of select="$editionSlug"/>/<xsl:value-of select="@target"/></xsl:attribute>            <xsl:apply-templates select="@*[name() != 'targets']|node()"/>
         </navigatorItem>
     </xsl:template>
     

@@ -20,6 +20,7 @@ NAMESPACES = {
 LOCAL_PATHS = {
     'frbr': Path('frbr-tree.xml'),
     'edirom-config': Path('Edirom-Config'),
+    '_edirom': Path('Edirom'),
     'conc': Path('Konkordanzen'),
     'criticalRemarks': Path('Textkritische-Anmerkungen'),
     'kbSources': Path('Quellenuebersicht'),
@@ -117,14 +118,15 @@ def get_related_file(search_string, path, file_type, search_type: str) -> str:
         print(f"    |   |   [WARN] [W2] No file with '{search_string}' in name found in {path}", file=sys.stderr)
         return None
 
-def build_nav(nav_path, edition_slug: str) -> str:
-    """ Call buildNav.xsl with editionSlug parameter """
+def build_nav(nav_path, vol_slug: str, edition_slug: str) -> str:
+    """ Call buildNav.xsl with volSlug and editionSlug parameters """
     try:
         build_nav_xsl = LOCAL_PATHS['scripts'] / 'buildNav.xsl'
         nav_path_abs = Path(nav_path).resolve()  # Absolut path
         
         result = subprocess.run([
             'xsltproc',
+            '--stringparam', 'volSlug', vol_slug,
             '--stringparam', 'editionSlug', edition_slug,
             str(build_nav_xsl),
             str(nav_path_abs)
@@ -177,12 +179,16 @@ def build_edirom_file(works: list) -> bool:
         work_title = work.xpath('./mei:title/text()', namespaces=NAMESPACES)[0]
         print(f"    +-- Processing {xid + 1}/{len(works)}: '{work_title}'")
         work_type = work.xpath('./@type', namespaces=NAMESPACES)[0]
-        edition_slug = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
-        edition_name = work.xpath('./mei:expressionList/mei:expression/mei:title/text()', namespaces=NAMESPACES)[0]
+        edition_name = work.xpath('./mei:title[@type="main" and @xml:lang="de"]/text()', namespaces=NAMESPACES)[0]
         edition_id = work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0]
-        # Create tmp directory for this edition
+        edition_slug = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
+        vol_slug_list = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="volSlug"]/text()', namespaces=NAMESPACES)
+        vol_slug = vol_slug_list[0] if vol_slug_list else edition_slug        # Create tmp directory for this edition
         tmp_path = LOCAL_PATHS['tmp'] / edition_slug
         tmp_path.mkdir(parents=True, exist_ok=True)
+        # Create output directory for this edition
+        output_path = LOCAL_PATHS['_edirom']
+        output_path.mkdir(parents=True, exist_ok=True)
     
         # Step 1: Build Nav
         print(f"    |   +-- Step 1.1: Build Navigation ({edition_slug})")
@@ -191,7 +197,7 @@ def build_edirom_file(works: list) -> bool:
             print(f"    |   |   [WARN] [W4] No nav file found - using empty fallback", file=sys.stderr)
             nav_output = "<navigatorDefinition/>"
         else:
-            nav_output = build_nav(LOCAL_PATHS['edirom-config'] / nav_file, edition_slug)
+            nav_output = build_nav(LOCAL_PATHS['edirom-config'] / nav_file, vol_slug, edition_slug)
             if not nav_output:
                 print(f"    |   |   [WARN] [W4b] build_nav failed - using empty fallback", file=sys.stderr)
                 nav_output = "<navigatorDefinition/>"
@@ -278,7 +284,7 @@ def build_edirom_file(works: list) -> bool:
         ], capture_output=True, text=True, check=True)
         print(f"    |   |   [OK] buildEdiromFile.xsl processed")
         # Save - xsltproc already outputs formatted XML with declaration
-        create_file(result.stdout, LOCAL_PATHS['tmp'] / "edition.xml", format_xml=True)
+        create_file(result.stdout, output_path / "edition.xml", format_xml=True)
         return True
     except subprocess.CalledProcessError as e:
         print(f"    |   |   [FAIL] [E1] buildEdiromFile.xsl failed: {e.stderr}", file=sys.stderr)
@@ -346,9 +352,9 @@ def prepare_sources(first_level_works: list) -> bool:
                     print(f"    |   |   [OK] prepareSources.xsl processed")
                     # Save - xsltproc already outputs formatted XML with declaration
                     if work_type == 'collection':
-                        source_output_path = LOCAL_PATHS['tmp'] / edition_slug / "sources" / f"{source_file_id}.xml"
+                        source_output_path = LOCAL_PATHS['_edirom'] / edition_slug / "sources" / f"{source_file_id}.xml"
                     else:
-                        source_output_path = LOCAL_PATHS['tmp'] / edition_slug / "sources" / f"{source_file_id}.xml"
+                        source_output_path = LOCAL_PATHS['_edirom'] / edition_slug / "sources" / f"{source_file_id}.xml"
                     source_output_path.parent.mkdir(parents=True, exist_ok=True)
                     create_file(result.stdout, source_output_path, format_xml=True)
                     return True
@@ -593,7 +599,7 @@ def _assemble_works_xml(work_elements: list, edition_slug: str, edition_name: st
         remove_blank_text(root)
         
         # Save file with proper formatting
-        tmp_path = LOCAL_PATHS['tmp'] / edition_slug
+        tmp_path = LOCAL_PATHS['_edirom'] / edition_slug
         tmp_path.mkdir(parents=True, exist_ok=True)
         works_xml_path = tmp_path / f"{edition_slug}_works.xml"
         
