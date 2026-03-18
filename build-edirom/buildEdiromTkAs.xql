@@ -21,6 +21,12 @@ declare namespace util = "http://exist-db.org/xquery/util";
 declare namespace map = "http://www.w3.org/2005/xpath-functions/map";
 declare namespace math = "http://www.w3.org/2005/xpath-functions/math";
 
+(: External variables - can be passed from the command line with -b option :)
+declare variable $cnList as xs:string external;
+declare variable $collectionPath as xs:string external;
+declare variable $sourcesPath as xs:string external;
+declare variable $editionHandle as xs:string external;
+
 declare function local:normalize-text-nodes($node as node()) as node() {
   typeswitch($node)
     case text() return text { normalize-space($node) }
@@ -278,14 +284,12 @@ declare function local:generate-uuid() as xs:string {
 };
 
 (: Paths and input documents :)
-(: Adjust the collection  Path to your local repository path :)
+(: Adjust the collection Path to your local repository path :)
 
-let $collectionPath := '../../'
-let $sources := collection(concat($collectionPath, 'Quellen/?select=*.xml'))
-let $inputDocs-tka := collection(concat($collectionPath, 'Textkritische-Anmerkungen/?select=*.xml&amp;recurse=yes'))
-let $editionHandle := doc($collectionPath || 'properties.xml')//property[@name = 'editionHandle']/text()
+let $cnListNode := parse-xml-fragment($cnList)
+let $sources := collection($sourcesPath)
 
-let $plist := map:merge(for $note in $inputDocs-tka//criticalNote
+let $plist := map:merge(for $note in $cnListNode//criticalNote
 return
   map:entry($note/@xml:id/string(), string-join(for $measures in $note/noteText//measures
   return
@@ -300,8 +304,8 @@ let $criticalNotes :=
   type="criticalCommentary"
 >
   {
-    for $note in $inputDocs-tka//*:criticalNote
-    let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $inputDocs-tka/*:kb/@mainSource/string(), $inputDocs-tka/*:kb/@n/string()), $editionHandle)
+    for $note in $cnListNode//*:criticalNote
+    let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $cnListNode/*:kb/@mainSource/string(), $cnListNode/*:kb/@n/string()), $editionHandle)
     (:      let $mainSourcePlist := "TEST":)
     return
       <annot
