@@ -15,6 +15,7 @@ NAMESPACES = {
     'mei': 'http://www.music-encoding.org/ns/mei',
     'xml': 'http://www.w3.org/XML/1998/namespace',
     'edirom': 'http://www.edirom.de/ns/1.3',
+    'xlink': 'http://www.w3.org/1999/xlink'
 }
 
 LOCAL_PATHS = {
@@ -36,10 +37,12 @@ def get_first_level_works_from_frbr(frbr_path: str) -> tuple:
         tree = etree.parse(frbr_path)
         root = tree.getroot()
         works = root.xpath('/mei:mei/mei:meiHead/mei:workList/mei:work', namespaces=NAMESPACES)
-        return works
+        edition_name = root.xpath('/mei:mei/mei:meiHead/mei:fileDesc/mei:titleStmt/mei:title[@type="volume"]/text()', namespaces=NAMESPACES)
+        vol_slug = root.xpath('/mei:mei/mei:meiHead/mei:fileDesc/mei:pubStmt/mei:identifier[@type="volSlug"]/text()', namespaces=NAMESPACES)
+        return works, edition_name[0] if edition_name else 'Untitled Edition', vol_slug[0] if vol_slug else 'untitled_volume'
     except Exception as e:
         print(f"Error parsing {frbr_path}: {e}", file=sys.stderr)
-        return []
+        return [], 'Untitled Edition', 'untitled_volume'
     
 def get_second_level_works(work: etree._Element) -> set:
     """ Get second-level works if the first-level work is a collection """
@@ -166,7 +169,7 @@ def build_concordances(conc_json: str, groups_titles: list, sources_path: str, e
         print(f"    |   |   [FAIL] [E3] buildConnectionsByCSV.xql failed: {e.stderr}", file=sys.stderr)
         return None
     
-def build_edirom_file(works: list) -> bool:
+def build_edirom_file(works: list, edition_name: str, vol_slug: str) -> bool:
     """ 
     Build Edirom file with dependency tracking using Early Return Pattern.
     Returns True if successful, False if any step fails.
@@ -179,11 +182,8 @@ def build_edirom_file(works: list) -> bool:
         work_title = work.xpath('./mei:title/text()', namespaces=NAMESPACES)[0]
         print(f"    +-- Processing {xid + 1}/{len(works)}: '{work_title}'")
         work_type = work.xpath('./@type', namespaces=NAMESPACES)[0]
-        edition_name = work.xpath('./mei:title[@type="main" and @xml:lang="de"]/text()', namespaces=NAMESPACES)[0]
         edition_id = work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0]
-        edition_slug = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
-        vol_slug_list = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="volSlug"]/text()', namespaces=NAMESPACES)
-        vol_slug = vol_slug_list[0] if vol_slug_list else edition_slug        # Create tmp directory for this edition
+        edition_slug = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]     # Create tmp directory for this edition
         tmp_path = LOCAL_PATHS['tmp'] / edition_slug
         tmp_path.mkdir(parents=True, exist_ok=True)
         # Create output directory for this edition
@@ -246,8 +246,10 @@ def build_edirom_file(works: list) -> bool:
             '{%s}work' % NAMESPACES['edirom'], 
             attrib={
                 '{%s}id' % NAMESPACES['xml']: work_xml_id, 
-                'sortNo': str(xid + 1)
-            }
+                'sortNo': str(xid + 1),
+                '{%s}href' % NAMESPACES['xlink']: f"xmldb:exist:///db/apps/edirom-content/{vol_slug}/{edition_slug}/{edition_slug}_works.xml"
+            },
+            nsmap={'xlink': NAMESPACES['xlink']}
         )
 
         # Add navigation (guaranteed to have valid XML from fallback)
@@ -427,13 +429,12 @@ def _get_cnl_xml(cnl_id: str) -> etree._Element:
         print(f"    |   [FAIL] Failed to parse cnl file: {e}", file=sys.stderr)
         return None
 
-def build_works_file(first_level_works: list) -> bool:
+def build_works_file(first_level_works: list, edition_name: str) -> bool:
     """ Build works.xml file for each first-level work """
     print(f"+-- Step 3: Build Works Files")
     
     for first_level_work in first_level_works:
         edition_slug = first_level_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
-        edition_name = first_level_work.xpath('./mei:expressionList/mei:expression/mei:title/text()', namespaces=NAMESPACES)[0]
         work_type = first_level_work.xpath('./@type', namespaces=NAMESPACES)[0]
         
         print(f"    +-- Building works.xml for '{edition_slug}' ({work_type})")
@@ -653,11 +654,11 @@ def main():
     print("Preparation of Edirom Content from frbr-tree.xml")
     print("=" * 70)
 
-    first_level_works = get_first_level_works_from_frbr(LOCAL_PATHS['frbr'])
+    first_level_works, edition_name, vol_slug = get_first_level_works_from_frbr(LOCAL_PATHS['frbr'])
     print(f"\nFound {len(first_level_works)} work(s) to process\n")
 
     # Build edirom file
-    if build_edirom_file(first_level_works):
+    if build_edirom_file(first_level_works, edition_name, vol_slug):
         print(f"  [OK] READY: Edition prepared for next steps\n")
     else:
         print(f"  [FAIL] FAILED: Edition skipped due to dependency errors\n")
@@ -669,7 +670,7 @@ def main():
         print(f"  [FAIL] FAILED: Edition skipped due to dependency errors\n")
 
     # Build works file
-    if build_works_file(first_level_works):
+    if build_works_file(first_level_works, edition_name):
         print(f"  [OK] READY: Edition prepared for next steps\n")
     else:
         print(f"  [FAIL] FAILED: Edition skipped due to dependency errors\n")
