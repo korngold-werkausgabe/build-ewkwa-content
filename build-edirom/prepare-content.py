@@ -439,20 +439,14 @@ def build_works_file(first_level_works: list, edition_name: str) -> bool:
         
         print(f"    +-- Building works.xml for '{edition_slug}' ({work_type})")
         
-        # Determine which works to process
-        if work_type == 'collection':
-            works_to_process = get_second_level_works(first_level_work)
-        else:  # singleton
-            works_to_process = [first_level_work]
-        
-        # Build work elements for this works.xml
-        work_elements = _build_work_elements(first_level_work, works_to_process, edition_slug)
-        if not work_elements:
-            print(f"    |   [WARN] No work elements created for {edition_slug}", file=sys.stderr)
+        # Build single work element with nested structure
+        work_element = _build_work_element_with_components(first_level_work, edition_slug, work_type)
+        if not work_element:
+            print(f"    |   [WARN] No work element created for {edition_slug}", file=sys.stderr)
             continue
         
         # Assemble final works.xml
-        if _assemble_works_xml(work_elements, edition_slug, edition_name):
+        if _assemble_works_xml([work_element], edition_slug, edition_name):
             print(f"    |   [OK] works.xml created")
         else:
             print(f"    |   [FAIL] Failed to assemble works.xml for {edition_slug}", file=sys.stderr)
@@ -461,91 +455,147 @@ def build_works_file(first_level_works: list, edition_name: str) -> bool:
     print(f"    [OK] Step 3 complete")
     return True
 
-def _build_work_elements(first_level_work: etree._Element, works: list, edition_slug: str) -> list:
-    """ Helper: Build work elements from a list of works """
-    work_elements = []
+def _build_work_element_with_components(first_level_work: etree._Element, edition_slug: str, work_type: str) -> etree._Element:
+    """ 
+    Helper: Build a single work element with nested components if it's a collection.
+    For collections: Creates a first-level work with a componentList containing second-level works.
+    For singletons: Creates a single work element.
+    """
     termList_elements = _get_termlists()
     
     if not termList_elements:
         print(f"    |   [WARN] No termList elements found - expressions won't have classifications", file=sys.stderr)
-        return []
+        return None
     
     work_template_path = (LOCAL_PATHS['templates'] / 'template_work.xml').resolve()
     
-    for counter, work in enumerate(works, 1):
-        try:
-            work_id = work.xpath('./@xml:id', namespaces=NAMESPACES)[0]
-            work_title_list = work.xpath('./mei:title/text()', namespaces=NAMESPACES)
-            work_title = work_title_list[0] if work_title_list else 'Untitled'
+    try:
+        # Create or copy template for first-level work
+        tree = etree.parse(work_template_path)
+        work_element = tree.getroot()
+        
+        # Set attributes for first-level work
+        work_id = first_level_work.xpath('./@xml:id', namespaces=NAMESPACES)[0]
+        work_title_list = first_level_work.xpath('./mei:title/text()', namespaces=NAMESPACES)
+        work_title = work_title_list[0] if work_title_list else 'Untitled'
+        
+        work_element.set('{%s}id' % NAMESPACES['xml'], work_id)
+        work_element.set('n', '1')
+        
+        # Set title for first-level work
+        title_elems = work_element.xpath('./title')
+        if title_elems:
+            title_elems[0].text = work_title
+        
+        # Add termLists to expression
+        expression_list = work_element.xpath('./expressionList')
+        expression = expression_list[0].xpath('./expression') if expression_list else []
+        if expression:
+            # Remove expression title element if present
+            expr_title = expression[0].xpath('./title')
+            if expr_title:
+                expression[0].remove(expr_title[0])
             
-            tree = etree.parse(work_template_path)
-            work_element = tree.getroot()
+            # Replace classification element with termLists
+            classification = expression[0].xpath('./classification')
+            if classification:
+                expression[0].remove(classification[0])
+                if termList_elements:
+                    for termList in termList_elements:
+                        expression[0].append(deepcopy(termList))
+        
+        # For collections: Add componentList with second-level works
+        if work_type == 'collection':
+            second_level_works = get_second_level_works(first_level_work)
             
-            # Set work-level attributes
-            work_element.set('{%s}id' % NAMESPACES['xml'], work_id)
-            work_element.set('n', str(counter))
+            # Create componentList element
+            component_list = etree.Element('componentList')
             
-            # Set work-level title
-            title_elems = work_element.xpath('./title')
-            if title_elems:
-                title_elems[0].text = work_title
-            
-            # Add termLists to expression (remove title if present)
-            expression_list = work_element.xpath('./expressionList')
-            expression = expression_list[0].xpath('./expression') if expression_list else []
-            if expression:
-                # Remove expression title element if present
-                expr_title = expression[0].xpath('./title')
-                if expr_title:
-                    expression[0].remove(expr_title[0])
+            for counter, second_level_work in enumerate(second_level_works, 1):
+                # Parse template for each second-level work
+                tree_component = etree.parse(work_template_path)
+                component_element = tree_component.getroot()
                 
-                # Replace classification element with termLists
-                classification = expression[0].xpath('./classification')
-                if classification:
-                    expression[0].remove(classification[0])
-                    if termList_elements and counter == 1:
-                        # Add termList elements only to the first work to avoid ID conflicts
-                        for termList in termList_elements:
-                            expression[0].append(deepcopy(termList))
+                # Set component attributes
+                component_id = second_level_work.xpath('./@xml:id', namespaces=NAMESPACES)[0]
+                component_title_list = second_level_work.xpath('./mei:title/text()', namespaces=NAMESPACES)
+                component_title = component_title_list[0] if component_title_list else 'Untitled'
+                
+                component_element.set('{%s}id' % NAMESPACES['xml'], component_id)
+                component_element.set('n', str(counter))
+                
+                # Set component title
+                component_title_elems = component_element.xpath('./title')
+                if component_title_elems:
+                    component_title_elems[0].text = component_title
+                
+                # Remove expressionList from component works
+                component_expression_list = component_element.xpath('./expressionList')
+                if component_expression_list:
+                    component_element.remove(component_expression_list[0])
+                
+                # Add critical remarks to component notesStmt
+                second_level_work_expression_id = second_level_work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0] if second_level_work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES) else None
+                cnl_id = _get_cnl_id(first_level_work, second_level_work_expression_id) if second_level_work_expression_id else None
+                cnl_xml = _get_cnl_xml(cnl_id) if cnl_id else None
+                
+                component_notes_stmts = component_element.xpath('.//notesStmt')
+                if component_notes_stmts:
+                    if cnl_xml is not None:
+                        critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug)
+                        if critical_remarks_str:
+                            try:
+                                cr_elem = etree.fromstring(critical_remarks_str)
+                                component_notes_stmts[0].append(cr_elem)
+                            except Exception as cr_e:
+                                print(f"    |   [WARN] Could not parse critical remarks: {cr_e}", file=sys.stderr)
+                                empty_annot = etree.Element('annot')
+                                component_notes_stmts[0].append(empty_annot)
+                        else:
+                            empty_annot = etree.Element('annot')
+                            component_notes_stmts[0].append(empty_annot)
+                    else:
+                        print(f"    |   |   [WARN] [W14] No critical remarks file reference found for {component_id}", file=sys.stderr)
+                        empty_annot = etree.Element('annot')
+                        component_notes_stmts[0].append(empty_annot)
+                
+                component_list.append(component_element)
+                print(f"    |   Component element {counter}/{len(second_level_works)} created")
             
-            # Add critical remarks to notesStmt
-            expression_id = work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0] if work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES) else None
+            # Add componentList to the first-level work
+            work_element.append(component_list)
+        
+        else:  # singleton work
+            # For singletons, add critical remarks directly to the first-level work
+            expression_id = first_level_work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0] if first_level_work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES) else None
             cnl_id = _get_cnl_id(first_level_work, expression_id) if expression_id else None
             cnl_xml = _get_cnl_xml(cnl_id) if cnl_id else None
             
             notes_stmts = work_element.xpath('.//notesStmt')
             if notes_stmts:
                 if cnl_xml is not None:
-                    # Call buildEdiromTkAs.xql to generate annot
                     critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug)
                     if critical_remarks_str:
                         try:
-                            # Parse critical remarks - should be annot element
                             cr_elem = etree.fromstring(critical_remarks_str)
                             notes_stmts[0].append(cr_elem)
                         except Exception as cr_e:
                             print(f"    |   [WARN] Could not parse critical remarks: {cr_e}", file=sys.stderr)
-                            # Add empty annot element as fallback
                             empty_annot = etree.Element('annot')
                             notes_stmts[0].append(empty_annot)
                     else:
-                        # buildEdiromTkAs.xql failed - add empty annot as fallback
                         empty_annot = etree.Element('annot')
                         notes_stmts[0].append(empty_annot)
                 else:
-                    # No cnl_id found - add empty annot element
                     print(f"    |   |   [WARN] [W14] No critical remarks file reference found for {work_id}", file=sys.stderr)
                     empty_annot = etree.Element('annot')
                     notes_stmts[0].append(empty_annot)
-            
-            work_elements.append(work_element)
-            print(f"    |   Work element {counter}/{len(works)} created")
-            
-        except Exception as e:
-            print(f"    |   [WARN] Failed to build work element {counter}: {e}", file=sys.stderr)
-            continue
-    
-    return work_elements
+        
+        return work_element
+        
+    except Exception as e:
+        print(f"    |   [WARN] Failed to build work element: {e}", file=sys.stderr)
+        return None
 
 def _get_termlists() -> list:
     """ Helper: Get termList elements from template """
