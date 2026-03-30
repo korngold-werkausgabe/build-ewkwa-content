@@ -9,6 +9,8 @@ services:
     volumes:
       # Mount the entire project (from workspace root)
       - ../../:/app
+      # Mount build-xar directory for output
+      - ../../build-xar:/output
     environment:
       - PYTHONUNBUFFERED=1
     stdin_open: true

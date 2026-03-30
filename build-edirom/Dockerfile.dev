@@ -3,7 +3,7 @@
 # For local testing      #
 ##########################
 
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim-bookworm AS prepare-content
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
@@ -25,11 +25,40 @@ RUN pip install --no-cache-dir lxml
 # Create user with UID 1000 for host compatibility
 RUN useradd -m -u 1000 -s /bin/bash appuser
 
+# Copy project files from host
+COPY . /app
+
 # Set working directory
 WORKDIR /app
+
+# Ensure Python output is unbuffered for docker build logs
+ENV PYTHONUNBUFFERED=1
 
 # Create tmp directory with proper permissions for appuser
 RUN mkdir -p /app/tmp && chown -R appuser:appuser /app/tmp && chmod -R 755 /app/tmp
 
-# Default command: bash for interactive testing
-CMD ["/bin/sh"]
+# Run prepare-content script to generate Edirom directory
+RUN python3 build-ewkwa-content/build-edirom/prepare-content.py 2>&1 | tee /prepare-content.log
+
+########################
+# Build edirom content #
+########################
+FROM eclipse-temurin:21 AS build-content
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ant git
+
+RUN git clone -b develop --single-branch --recursive https://github.com/Edirom/Edirom-Edition-Packaging.git
+
+WORKDIR /Edirom-Edition-Packaging
+COPY --from=prepare-content /app/Edirom/* .
+COPY --from=prepare-content /app/Edirom-Config/local.properties .
+COPY --from=prepare-content /prepare-content.log .
+
+# Create output directory  
+RUN mkdir -p /output
+
+RUN ant -Duri.edition=/Edirom-Edition-Packaging xar
+
+# Copy xar and logs to output when container starts
+CMD ["sh", "-c", "cp /Edirom-Edition-Packaging/dist/*.xar /output/ 2>/dev/null; cp /Edirom-Edition-Packaging/prepare-content.log /output/ 2>/dev/null || true"]
