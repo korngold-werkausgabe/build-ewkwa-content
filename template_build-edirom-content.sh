@@ -34,6 +34,11 @@ docker run --rm \
   -v "$PROJECT_ROOT/build-xar:/output" \
   edirom-content-builder:local
 
+# Copy Edirom_generated directory from image to host for debugging
+#CONTAINER_ID=$(docker create edirom-content-builder:local)
+#docker cp "$CONTAINER_ID:/output/Edirom_generated" "$PROJECT_ROOT/build-xar/" 2>/dev/null || true
+#docker rm "$CONTAINER_ID" > /dev/null 2>&1
+
 echo ""
 echo "Build completed successfully!"
 ls -lh build-xar/
