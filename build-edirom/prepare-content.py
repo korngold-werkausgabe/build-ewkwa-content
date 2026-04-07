@@ -300,25 +300,29 @@ def prepare_sources(first_level_works: list) -> bool:
     for work in first_level_works:
         work_type = work.xpath('./@type', namespaces=NAMESPACES)[0]
         edition_slug = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
-        search_strings = []
+        search_string = ""
 
         print(f"    +-- Processing sources for '{edition_slug}'")
         
         if work_type == 'collection':
             for sub_work in get_second_level_works(work) :
-                search_strings.append(sub_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0])  
-        elif work_type == 'singleton':
-            search_strings.append(edition_slug)
+                search_string = sub_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]  
+        #elif work_type == 'singleton':
+        #    search_string = edition_slug
             
-        for search_string in search_strings:
-            # Find corresponding kb_sources file by matching search_string in filename
-            kb_sources_files = list(LOCAL_PATHS['kbSources'].glob('kb_sources*.xml'))
-            kb_sources_paths = []
+        # Find corresponding kb_sources file by matching search_string in filename
+        kb_sources_files = list(LOCAL_PATHS['kbSources'].glob('kb_sources*.xml'))
+        kb_sources_paths = []
+        
+        for kb_file in kb_sources_files:
+            if search_string == "":
+                print(LOCAL_PATHS['kbSources'] / "kb_sources.xml")
+                kb_sources_paths.append(LOCAL_PATHS['kbSources'] / "kb_sources.xml")
+                break
+            elif search_string in kb_file.name:
+                kb_sources_paths.append(kb_file)
+                break
             
-            for kb_file in kb_sources_files:
-                if search_string in kb_file.name:
-                    kb_sources_paths.append(kb_file)
-                    break
             
             if not kb_sources_paths:
                 print(f"    |   [WARN] [W7] No kb_sources file found for '{search_string}' in {LOCAL_PATHS['kbSources']}", file=sys.stderr)
@@ -331,8 +335,8 @@ def prepare_sources(first_level_works: list) -> bool:
             
             for source in sources:
                 source_file_id = source.xpath('./@target', namespaces=NAMESPACES)[0] if source.xpath('./@target', namespaces=NAMESPACES) else source.xpath('./@xml:id', namespaces=NAMESPACES)[0]
-                source_title = source.xpath('./title/text()', namespaces=NAMESPACES)[0] if source.xpath('./title/text()', namespaces=NAMESPACES) else source_file_id
-                source_siglum = source.xpath('./siglum/text()', namespaces=NAMESPACES)[0] if source.xpath('./siglum/text()', namespaces=NAMESPACES) else source_file_id
+                source_title = source.xpath('./shortTitle/text()', namespaces=NAMESPACES)[0] if source.xpath('./shortTitle/text()', namespaces=NAMESPACES) else "No title found"
+                source_siglum = source.xpath('./siglum/text()', namespaces=NAMESPACES)[0] if source.xpath('./siglum/text()', namespaces=NAMESPACES) else "Siglum not found"
                 source_file = get_related_file(source_file_id, LOCAL_PATHS['sources'], '*.xml', 'by_id')
                 
                 if not source_file:
@@ -353,10 +357,12 @@ def prepare_sources(first_level_works: list) -> bool:
                     ], capture_output=True, text=True, check=True)
                     print(f"    |   |   [OK] prepareSources.xsl processed")
                     # Save - xsltproc already outputs formatted XML with declaration
+                    # Use original filename instead of source_file_id
+                    original_filename = source_file.name
                     if work_type == 'collection':
-                        source_output_path = LOCAL_PATHS['_edirom'] / edition_slug / "sources" / f"{source_file_id}.xml"
+                        source_output_path = LOCAL_PATHS['_edirom'] / edition_slug / "sources" / original_filename
                     else:
-                        source_output_path = LOCAL_PATHS['_edirom'] / edition_slug / "sources" / f"{source_file_id}.xml"
+                        source_output_path = LOCAL_PATHS['_edirom'] / edition_slug / "sources" / original_filename
                     source_output_path.parent.mkdir(parents=True, exist_ok=True)
                     create_file(result.stdout, source_output_path, format_xml=True)
                     return True
