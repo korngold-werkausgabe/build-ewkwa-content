@@ -22,7 +22,8 @@ declare namespace map = "http://www.w3.org/2005/xpath-functions/map";
 declare namespace math = "http://www.w3.org/2005/xpath-functions/math";
 
 (: External variables - can be passed from the command line with -b option :)
-declare variable $cnList as xs:string external;
+declare variable $cnList as xs:string? external := "";
+declare variable $cnListFile as xs:string? external := "";
 declare variable $collectionPath as xs:string external;
 declare variable $sourcesPath as xs:string external;
 declare variable $editionHandle as xs:string external;
@@ -236,7 +237,7 @@ declare function local:populatePlist($sources as node()*, $measures as node(), $
 :)
 declare function local:measureUri($sources as node()*, $measure as node()*, $editionHandle as xs:string*) as xs:string* {
   let $url := "xmldb:exist:///db/apps/edirom-content/" || $editionHandle || "/sources/"
-  let $sourceDoc := $sources//mei:mei[.//mei:identifier[text() = $measure/@siglum/string()]]
+  let $sourceDoc := $sources//mei:mei[.//mei:identifier[text() = $measure/@siglum/string()]][1]
   return
     switch ($measure/name())
       case 'measure'
@@ -286,7 +287,11 @@ declare function local:generate-uuid() as xs:string {
 (: Paths and input documents :)
 (: Adjust the collection Path to your local repository path :)
 
-let $cnListNode := parse-xml-fragment($cnList)
+let $cnListNode := 
+  if ($cnListFile != "") then
+    doc($cnListFile)
+  else
+    parse-xml-fragment($cnList)
 let $sources := collection($sourcesPath)
 
 let $plist := map:merge(for $note in $cnListNode//criticalNote
@@ -296,19 +301,14 @@ return
     local:populatePlist($sources, $measures, $editionHandle), ' '))
 )
 (:plist="{concat(local:populatePlist($sources, $note/measures/text()), ' ', map:get($plist, $note/@xml:id/string()))}":)
-(: Build annots :)
+(: Build annots - return only inner annot elements without wrapper :)
 let $criticalNotes :=
-<annot
-  xmlns="http://www.music-encoding.org/ns/mei"
-  xml:id="{concat('ewkwa-kb_', local:generate-uuid())}"
-  type="criticalCommentary"
->
-  {
-    for $note in $cnListNode//*:criticalNote
+  for $note in $cnListNode//*:criticalNote
     let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $cnListNode/*:kb/@mainSource/string(), $cnListNode/*:kb/@n/string()), $editionHandle)
     (:      let $mainSourcePlist := "TEST":)
     return
       <annot
+        xmlns="http://www.music-encoding.org/ns/mei"
         type="editorialComment"
         xml:id="{$note/@xml:id}"
         plist="{$mainSourcePlist, ' ', map:get($plist, $note/@xml:id/string())}"
@@ -362,8 +362,7 @@ let $criticalNotes :=
         type="categories"
         target="{$note/*:categories/@values/data()}"/>
     </annot>
-}
-</annot>
 
 return
-  local:normalize-text-nodes($criticalNotes)
+  for $annot in $criticalNotes
+  return local:normalize-text-nodes($annot)
