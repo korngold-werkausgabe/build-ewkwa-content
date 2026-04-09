@@ -49,6 +49,13 @@ def get_second_level_works(work: etree._Element) -> set:
     if work.xpath('./@type', namespaces=NAMESPACES)[0] == 'collection':
         return work.xpath('./mei:componentList//mei:work[@type="singleton"]', namespaces=NAMESPACES)
     return []
+
+def get_component_expressions(expression: etree._Element) -> list:
+    """ Get component expressions if the expression has a componentList (e.g., for different editions like full-score, short-score) """
+    component_list = expression.xpath('./mei:componentList', namespaces=NAMESPACES)
+    if component_list:
+        return expression.xpath('./mei:componentList/mei:expression', namespaces=NAMESPACES)
+    return []
     
 def get_nav(work: etree._Element) -> str:
     """ Get filename of nav.xml for a given first-level work """
@@ -140,7 +147,7 @@ def build_nav(nav_path, vol_slug: str, edition_slug: str) -> str:
         print(f"    |   |   [FAIL] [E1] buildNav.xsl failed: {e.stderr}", file=sys.stderr)
         return None
     
-def build_concordances(conc_json: str, groups_titles: list, sources_path: str, edition_slug: str) -> str:
+def build_concordances(conc_json: str, groups_titles: list, sources_path: str, edition_slug: str, vol_slug: str) -> str:
     """ Call buildConnectionsByCSV.xql with concordance JSON and sources using basex """
     try:
         if not conc_json:
@@ -155,6 +162,7 @@ def build_concordances(conc_json: str, groups_titles: list, sources_path: str, e
             f'-b csvPathsString={conc_json}',
             f'-b sourcesPath={sources_path_abs}',
             f'-b editionSlug={edition_slug}',
+            f'-b volSlug={vol_slug}',
             f'-b propertiesPath={Path("properties.xml").resolve()}',
             f'-b groupsTitleDe={groups_titles["de"]}',
             f'-b groupsTitleEn={groups_titles["en"]}',
@@ -230,7 +238,7 @@ def build_edirom_file(works: list, edition_name: str, vol_slug: str) -> bool:
                 'en': title_en[0] if title_en else ''
             }
             
-            concordance_output = build_concordances(conc_files, groups_titles, LOCAL_PATHS['sources'], edition_slug)
+            concordance_output = build_concordances(conc_files, groups_titles, f"{LOCAL_PATHS['_edirom']}/{edition_slug}/sources", edition_slug, vol_slug)
             if not concordance_output:
                 print(f"    |   |   [WARN] [W5b] build_concordances failed - using empty fallback", file=sys.stderr)
                 concordance_output = "<concordances/>"
@@ -279,7 +287,7 @@ def build_edirom_file(works: list, edition_name: str, vol_slug: str) -> bool:
             'xsltproc',
             '--stringparam', 'editionId', edition_id,
             '--stringparam', 'editionName', edition_name,
-            '--stringparam', 'editionPrefsPath', edition_slug,
+            '--stringparam', 'editionPrefsPath', f"{vol_slug}/{edition_slug}",
             '--stringparam', 'editionWorksPath', str(works_file_path.resolve()),
             str(build_edirom_file_xsl),
             str(edirom_file_template_path),
@@ -365,10 +373,9 @@ def prepare_sources(first_level_works: list) -> bool:
                         source_output_path = LOCAL_PATHS['_edirom'] / edition_slug / "sources" / original_filename
                     source_output_path.parent.mkdir(parents=True, exist_ok=True)
                     create_file(result.stdout, source_output_path, format_xml=True)
-                    return True
                 except subprocess.CalledProcessError as e:
                     print(f"    |   |   [FAIL] [E1] prepareSources.xsl failed: {e.stderr}", file=sys.stderr)
-                    return False
+                    continue
             
         # run script to prepare source and copy in tmp/edition_slug/sources/ -> TODO: Filename?
     
@@ -382,16 +389,26 @@ def build_critical_remarks(cnl_xml: str, sources_path: str, edition_slug: str) -
         sources_path_abs = Path(sources_path).resolve()
         collection_path_abs = (LOCAL_PATHS['tmp'] / edition_slug).resolve()
         
-        result = subprocess.run([
-            'basex',
-            f'-b cnList={cnl_xml}',
-            f'-b collectionPath={collection_path_abs}',
-            f'-b sourcesPath={sources_path_abs}',
-            f'-b editionHandle={edition_slug}',
-            str(build_tk_as_xql)
-        ], capture_output=True, text=True, check=True)
-        print(f"    |   |   [OK] buildEdiromTkAs.xql processed")
-        return result.stdout
+        # Write CNL XML to temp file instead of passing via command line to avoid arg length limit
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as tmp_file:
+            tmp_file.write(cnl_xml)
+            tmp_cnl_file = tmp_file.name
+        
+        try:
+            result = subprocess.run([
+                'basex',
+                f'-b cnListFile={tmp_cnl_file}',
+                f'-b collectionPath={collection_path_abs}',
+                f'-b sourcesPath={sources_path_abs}',
+                f'-b editionHandle={edition_slug}',
+                str(build_tk_as_xql)
+            ], capture_output=True, text=True, check=True)
+            print(f"    |   |   [OK] buildEdiromTkAs.xql processed")
+            return result.stdout
+        finally:
+            # Clean up temp file
+            Path(tmp_cnl_file).unlink(missing_ok=True)
     except FileNotFoundError:
         print(f"    |   |   [WARN] [W6] basex not found - using empty fallback", file=sys.stderr)
         return None
@@ -399,59 +416,154 @@ def build_critical_remarks(cnl_xml: str, sources_path: str, edition_slug: str) -
         print(f"    |   |   [FAIL] [E3] buildEdiromTkAs.xql failed: {e.stderr}", file=sys.stderr)
         return None
 
-def _get_cnl_id(first_level_work: etree._Element, expression_id: str) -> str:
-    """ Extract cnl_id from first_level_work's relationList """
-    cnl_id = None
+def _get_cnl_id(first_level_work: etree._Element, expression_id: str) -> list:
+    """ Extract ALL cnl_ids from first_level_work's relationList """
+    cnl_ids = []
     rel_has_part = first_level_work.xpath(f'./mei:relationList/mei:relation[@rel="hasPart" and @target="#{expression_id}"]/@plist', namespaces=NAMESPACES)
     
     for plist in rel_has_part:
         for id_item in plist.split():
             id_clean = id_item.lstrip('#')
             if 'cnl' in id_clean:
-                cnl_id = id_clean
-                break
-        if cnl_id:
-            break
+                cnl_ids.append(id_clean)
     
-    return cnl_id
+    return cnl_ids
 
-def _get_cnl_xml(cnl_id: str) -> etree._Element:
-    """ Get cnList element from criticalRemarks by cnl_id """
+def _get_cnl_xml(cnl_id: str, subdirectory: str = None) -> etree._Element:
+    """ 
+    Get cnList element from criticalRemarks by cnl_id.
+    If subdirectory is provided, search in criticalRemarks/subdirectory/ first.
+    """
     try:
-        cnl_file = get_related_file(cnl_id, LOCAL_PATHS['criticalRemarks'], '*.xml', 'by_id')
-        if not cnl_file:
-            print(f"    |   [WARN] [W9] No critical remarks found for cnl_id '{cnl_id}'", file=sys.stderr)
-            return None
+        cnl_file = None
+        search_paths = []
         
-        tree = etree.parse(LOCAL_PATHS['criticalRemarks'] / cnl_file, parser=etree.XMLParser(resolve_entities=False))
-        root = tree.getroot()
-        cnList = root.xpath(f'//*[@xml:id="{cnl_id}"]', namespaces=NAMESPACES)
-        if cnList:
-            return cnList[0]
+        # If subdirectory is provided, search there first
+        if subdirectory:
+            subdir_path = LOCAL_PATHS['criticalRemarks'] / subdirectory
+            if subdir_path.exists():
+                search_paths.append(subdir_path)
+        
+        # Also search in root criticalRemarks directory
+        search_paths.append(LOCAL_PATHS['criticalRemarks'])
+        
+        # Search for file in paths
+        for search_path in search_paths:
+            cnl_file = get_related_file(cnl_id, search_path, '*.xml', 'by_id')
+            if cnl_file:
+                tree = etree.parse(search_path / cnl_file, parser=etree.XMLParser(resolve_entities=False))
+                root = tree.getroot()
+                cnList = root.xpath(f'//*[@xml:id="{cnl_id}"]', namespaces=NAMESPACES)
+                if cnList:
+                    return cnList[0]
+        
+        # If we get here, file not found
+        if subdirectory:
+            print(f"    |   [WARN] [W9] No critical remarks found for cnl_id '{cnl_id}' in {LOCAL_PATHS['criticalRemarks']}/{subdirectory} or root", file=sys.stderr)
         else:
-            print(f"    |   [WARN] [W10] No element with xml:id='{cnl_id}' found in {cnl_file}", file=sys.stderr)
-            return None
+            print(f"    |   [WARN] [W9] No critical remarks found for cnl_id '{cnl_id}'", file=sys.stderr)
+        return None
+        
     except Exception as e:
         print(f"    |   [FAIL] Failed to parse cnl file: {e}", file=sys.stderr)
         return None
 
 def build_works_file(first_level_works: list, edition_name: str) -> bool:
-    """ Build works.xml file for each first-level work """
+    """ Build works.xml file for each first-level work (one file per work, with possible multiple expressions) """
     print(f"+-- Step 3: Build Works Files")
     
     for first_level_work in first_level_works:
-        edition_slug = first_level_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
+        # Get the main expression
+        main_expression = first_level_work.xpath('./mei:expressionList/mei:expression', namespaces=NAMESPACES)[0]
+        edition_slug = main_expression.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
         work_type = first_level_work.xpath('./@type', namespaces=NAMESPACES)[0]
         
         print(f"    +-- Building works.xml for '{edition_slug}' ({work_type})")
         
-        # Build single work element with nested structure
+        # Build single work element with main expression
         work_element = _build_work_element_with_components(first_level_work, edition_slug, work_type)
-        if not work_element:
+        if work_element is None:
             print(f"    |   [WARN] No work element created for {edition_slug}", file=sys.stderr)
             continue
         
-        # Assemble final works.xml
+        # Check if there are component expressions (e.g., full-score, short-score)
+        component_expressions = get_component_expressions(main_expression)
+        
+        if component_expressions:
+            print(f"    |   [INFO] Found {len(component_expressions)} component expression(s)")
+            # Add component expressions to a componentList within the main expression in the work element
+            try:
+                # Get the main expression in the work element
+                work_expressions = work_element.xpath('./mei:expressionList/mei:expression', namespaces=NAMESPACES)
+                if work_expressions:
+                    main_expr_in_work = work_expressions[0]
+                    
+                    # Check if componentList already exists, if not create it
+                    component_lists = main_expr_in_work.xpath('./mei:componentList', namespaces=NAMESPACES)
+                    if component_lists:
+                        component_list = component_lists[0]
+                    else:
+                        # Create new componentList element
+                        component_list = etree.Element('{%s}componentList' % NAMESPACES['mei'])
+                        main_expr_in_work.append(component_list)
+                    
+                    # Add component expressions to componentList with their critical remarks
+                    for component_expr in component_expressions:
+                        try:
+                            component_expr_copy = deepcopy(component_expr)
+                            component_slug = component_expr_copy.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0] if component_expr_copy.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES) else "unknown"
+                            component_expr_id = component_expr_copy.xpath('./@xml:id', namespaces=NAMESPACES)[0] if component_expr_copy.xpath('./@xml:id', namespaces=NAMESPACES) else None
+                            
+                            # Add notesStmt with critical remarks to component expression
+                            if component_expr_id:
+                                cnl_ids = _get_cnl_id(first_level_work, component_expr_id)
+                                if cnl_ids:
+                                    # Ensure component_expr_copy has notesStmt
+                                    notes_stmts = component_expr_copy.xpath('./mei:notesStmt', namespaces=NAMESPACES)
+                                    if not notes_stmts:
+                                        notes_stmt = etree.Element('{%s}notesStmt' % NAMESPACES['mei'])
+                                        component_expr_copy.append(notes_stmt)
+                                        notes_stmts = [notes_stmt]
+                                    
+                                    # Create single criticalCommentary wrapper for all CNL files
+                                    wrapper_annot = etree.Element('{%s}annot' % NAMESPACES['mei'], type='criticalCommentary')
+                                    
+                                    # Process each CNL file and collect all inner annots
+                                    for cnl_id in cnl_ids:
+                                        cnl_xml = _get_cnl_xml(cnl_id, subdirectory=component_slug)
+                                        if cnl_xml is not None:
+                                            critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], component_slug)
+                                            if critical_remarks_str:
+                                                try:
+                                                    parser = etree.XMLParser(remove_blank_text=True)
+                                                    # Parse the response - it now contains multiple annot elements without wrapper
+                                                    # Wrap them temporarily for parsing
+                                                    wrapped_str = f'<temp xmlns="http://www.music-encoding.org/ns/mei">{critical_remarks_str}</temp>'
+                                                    wrapper_elem = etree.fromstring(wrapped_str.encode('utf-8'), parser)
+                                                    # Extract all annot children and add to our criticalCommentary wrapper
+                                                    for annot in wrapper_elem:
+                                                        wrapper_annot.append(deepcopy(annot))
+                                                    print(f"    |   [OK] Added {len(wrapper_elem)} critical remarks from '{cnl_id}' to component '{component_slug}'")
+                                                except Exception as cr_e:
+                                                    print(f"    |   [WARN] Could not parse critical remarks from '{cnl_id}': {cr_e}", file=sys.stderr)
+                                            else:
+                                                print(f"    |   [WARN] No critical remarks generated for CNL '{cnl_id}'", file=sys.stderr)
+                                        else:
+                                            print(f"    |   [WARN] No CNL XML found for '{cnl_id}'", file=sys.stderr)
+                                    
+                                    # Add wrapper with all collected annots to notesStmt
+                                    if len(wrapper_annot) > 0:
+                                        notes_stmts[0].append(wrapper_annot)
+                            
+                            component_list.append(component_expr_copy)
+                            print(f"    |   [OK] Added component expression '{component_slug}' to componentList")
+                        except Exception as e:
+                            component_slug = component_expr.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0] if component_expr.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES) else "unknown"
+                            print(f"    |   [WARN] Failed to add component expression '{component_slug}': {e}", file=sys.stderr)
+            except Exception as e:
+                print(f"    |   [WARN] Failed to process component expressions: {e}", file=sys.stderr)
+        
+        # Assemble final works.xml with the single work element (containing main + components in componentList)
         if _assemble_works_xml([work_element], edition_slug, edition_name):
             print(f"    |   [OK] works.xml created")
         else:
@@ -460,6 +572,91 @@ def build_works_file(first_level_works: list, edition_name: str) -> bool:
     
     print(f"    [OK] Step 3 complete")
     return True
+
+def _build_work_element_from_component(component_expr: etree._Element, component_slug: str, work_type: str, first_level_work: etree._Element) -> etree._Element:
+    """ 
+    Helper: Build a work element from a component expression (e.g., full-score, short-score).
+    Component expressions are sub-expressions in a componentList, each with their own CNL files in subdirectories.
+    """
+    termList_elements = _get_termlists()
+    
+    if not termList_elements:
+        print(f"    |   |   [WARN] No termList elements found - expressions won't have classifications", file=sys.stderr)
+        return None
+    
+    work_template_path = (LOCAL_PATHS['templates'] / 'template_work.xml').resolve()
+    
+    try:
+        # Create work element from template
+        parser = etree.XMLParser(remove_blank_text=True)
+        tree = etree.parse(work_template_path, parser)
+        work_element = tree.getroot()
+        
+        # Set attributes for component work
+        component_id = component_expr.xpath('./@xml:id', namespaces=NAMESPACES)[0]
+        component_title_list = component_expr.xpath('./mei:title/text()', namespaces=NAMESPACES)
+        component_title = component_title_list[0] if component_title_list else component_slug
+        
+        work_element.set('{%s}id' % NAMESPACES['xml'], component_id)
+        work_element.set('n', '1')
+        
+        # Set title for component work
+        title_elems = work_element.xpath('./mei:title', namespaces=NAMESPACES)
+        if title_elems:
+            title_elems[0].text = component_title
+        
+        # Add termLists to expression
+        expression_list = work_element.xpath('./mei:expressionList', namespaces=NAMESPACES)
+        expression = expression_list[0].xpath('./mei:expression', namespaces=NAMESPACES) if expression_list else []
+        if expression:
+            # Remove expression title element if present
+            expr_title = expression[0].xpath('./mei:title', namespaces=NAMESPACES)
+            if expr_title:
+                expression[0].remove(expr_title[0])
+            
+            # Replace classification element with termLists
+            classification = expression[0].xpath('./mei:classification', namespaces=NAMESPACES)
+            if classification:
+                expression[0].remove(classification[0])
+                if termList_elements:
+                    for termList in termList_elements:
+                        try:
+                            expression[0].append(deepcopy(termList))
+                        except Exception as tl_e:
+                            print(f"    |   |   [WARN] [W15] Failed to append termList: {tl_e}", file=sys.stderr)
+                            continue
+        
+        # Add critical remarks for component expression
+        component_expr_id = component_expr.xpath('./@xml:id', namespaces=NAMESPACES)[0]
+        cnl_id = _get_cnl_id(first_level_work, component_expr_id)
+        cnl_xml = _get_cnl_xml(cnl_id, subdirectory=component_slug) if cnl_id else None
+        
+        notes_stmts = work_element.xpath('.//mei:notesStmt')
+        if notes_stmts:
+            if cnl_xml is not None:
+                critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], component_slug)
+                if critical_remarks_str:
+                    try:
+                        parser = etree.XMLParser(remove_blank_text=True)
+                        cr_elem = etree.fromstring(critical_remarks_str.encode('utf-8'), parser)
+                        notes_stmts[0].append(cr_elem)
+                    except Exception as cr_e:
+                        print(f"    |   |   [WARN] Could not parse critical remarks: {cr_e}", file=sys.stderr)
+                        empty_annot = etree.Element('annot')
+                        notes_stmts[0].append(empty_annot)
+                else:
+                    empty_annot = etree.Element('annot')
+                    notes_stmts[0].append(empty_annot)
+            else:
+                print(f"    |   |   [WARN] [W14] No critical remarks file reference found for {component_slug}", file=sys.stderr)
+                empty_annot = etree.Element('annot')
+                notes_stmts[0].append(empty_annot)
+        
+        return work_element
+        
+    except Exception as e:
+        print(f"    |   |   [WARN] Failed to build work element for component: {e}", file=sys.stderr)
+        return None
 
 def _build_work_element_with_components(first_level_work: etree._Element, edition_slug: str, work_type: str) -> etree._Element:
     """ 
@@ -477,45 +674,72 @@ def _build_work_element_with_components(first_level_work: etree._Element, editio
     
     try:
         # Create or copy template for first-level work
-        tree = etree.parse(work_template_path)
+        parser = etree.XMLParser(remove_blank_text=True)
+        tree = etree.parse(work_template_path, parser)
         work_element = tree.getroot()
         
         # Set attributes for first-level work
         work_id = first_level_work.xpath('./@xml:id', namespaces=NAMESPACES)[0]
-        work_title_list = first_level_work.xpath('./mei:title/text()', namespaces=NAMESPACES)
+        # Try to get title with type="main", fall back to any title
+        work_title_list = first_level_work.xpath('./mei:title[@type="main"]/text()', namespaces=NAMESPACES)
+        if not work_title_list:
+            work_title_list = first_level_work.xpath('./mei:title/text()', namespaces=NAMESPACES)
         work_title = work_title_list[0] if work_title_list else 'Untitled'
         
         work_element.set('{%s}id' % NAMESPACES['xml'], work_id)
         work_element.set('n', '1')
         
         # Set title for first-level work
-        title_elems = work_element.xpath('./title')
+        title_elems = work_element.xpath('./mei:title', namespaces=NAMESPACES)
         if title_elems:
             title_elems[0].text = work_title
+            print(f"    |   [OK] Set work title: {work_title}")
+        
+        # Get main expression from first_level_work to copy its metadata
+        main_expression_source = first_level_work.xpath('./mei:expressionList/mei:expression', namespaces=NAMESPACES)[0] if first_level_work.xpath('./mei:expressionList/mei:expression', namespaces=NAMESPACES) else None
         
         # Add termLists to expression
-        expression_list = work_element.xpath('./expressionList')
-        expression = expression_list[0].xpath('./expression') if expression_list else []
-        if expression:
-            # Remove expression title element if present
-            expr_title = expression[0].xpath('./title')
-            if expr_title:
-                expression[0].remove(expr_title[0])
+        expression_list = work_element.xpath('./mei:expressionList', namespaces=NAMESPACES)
+        expression = expression_list[0].xpath('./mei:expression', namespaces=NAMESPACES) if expression_list else []
+        if len(expression) > 0 and main_expression_source is not None:
+            # Set expression title from source
+            expr_title_elems = expression[0].xpath('./mei:title', namespaces=NAMESPACES)
+            expr_title_source = main_expression_source.xpath('./mei:title/text()', namespaces=NAMESPACES)
+            if expr_title_elems and expr_title_source:
+                expr_title_elems[0].text = expr_title_source[0]
+                print(f"    |   [OK] Set expression title: {expr_title_source[0]}")
+            else:
+                # If title doesn't exist in source, still try to set empty/create one
+                if expr_title_elems and not expr_title_source:
+                    pass  # Leave empty or could remove
+                elif not expr_title_elems:
+                    # Create title element if missing
+                    title_elem = etree.Element('{%s}title' % NAMESPACES['mei'])
+                    if expr_title_source:
+                        title_elem.text = expr_title_source[0]
+                    expression[0].insert(0, title_elem)
             
             # Replace classification element with termLists
-            classification = expression[0].xpath('./classification')
+            classification = expression[0].xpath('./mei:classification', namespaces=NAMESPACES)
             if classification:
                 expression[0].remove(classification[0])
+                # Add termLists after title
                 if termList_elements:
-                    for termList in termList_elements:
-                        expression[0].append(deepcopy(termList))
+                    insert_index = 1 if expr_title_elems else 0
+                    for i, termList in enumerate(termList_elements):
+                        try:
+                            expression[0].insert(insert_index + i, deepcopy(termList))
+                            print(f"    |   [OK] Added termList to expression")
+                        except Exception as tl_e:
+                            print(f"    |   [WARN] [W15] Failed to append termList: {tl_e}", file=sys.stderr)
+                            continue
         
         # For collections: Add componentList with second-level works
         if work_type == 'collection':
             second_level_works = get_second_level_works(first_level_work)
             
             # Create componentList element
-            component_list = etree.Element('componentList')
+            component_list = etree.Element('{%s}componentList' % NAMESPACES['mei'])
             
             for counter, second_level_work in enumerate(second_level_works, 1):
                 # Parse template for each second-level work
@@ -531,12 +755,12 @@ def _build_work_element_with_components(first_level_work: etree._Element, editio
                 component_element.set('n', str(counter))
                 
                 # Set component title
-                component_title_elems = component_element.xpath('./title')
+                component_title_elems = component_element.xpath('./mei:title', namespaces=NAMESPACES)
                 if component_title_elems:
                     component_title_elems[0].text = component_title
                 
                 # Remove expressionList from component works
-                component_expression_list = component_element.xpath('./expressionList')
+                component_expression_list = component_element.xpath('./mei:expressionList', namespaces=NAMESPACES)
                 if component_expression_list:
                     component_element.remove(component_expression_list[0])
                 
@@ -545,13 +769,15 @@ def _build_work_element_with_components(first_level_work: etree._Element, editio
                 cnl_id = _get_cnl_id(first_level_work, second_level_work_expression_id) if second_level_work_expression_id else None
                 cnl_xml = _get_cnl_xml(cnl_id) if cnl_id else None
                 
-                component_notes_stmts = component_element.xpath('.//notesStmt')
+                component_notes_stmts = component_element.xpath('.//mei:notesStmt', namespaces=NAMESPACES)
                 if component_notes_stmts:
                     if cnl_xml is not None:
                         critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug)
                         if critical_remarks_str:
                             try:
-                                cr_elem = etree.fromstring(critical_remarks_str)
+                                # Parse with proper namespace handling
+                                parser = etree.XMLParser(remove_blank_text=True)
+                                cr_elem = etree.fromstring(critical_remarks_str.encode('utf-8'), parser)
                                 component_notes_stmts[0].append(cr_elem)
                             except Exception as cr_e:
                                 print(f"    |   [WARN] Could not parse critical remarks: {cr_e}", file=sys.stderr)
@@ -577,13 +803,15 @@ def _build_work_element_with_components(first_level_work: etree._Element, editio
             cnl_id = _get_cnl_id(first_level_work, expression_id) if expression_id else None
             cnl_xml = _get_cnl_xml(cnl_id) if cnl_id else None
             
-            notes_stmts = work_element.xpath('.//notesStmt')
+            notes_stmts = work_element.xpath('.//mei:notesStmt', namespaces=NAMESPACES)
             if notes_stmts:
                 if cnl_xml is not None:
                     critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug)
                     if critical_remarks_str:
                         try:
-                            cr_elem = etree.fromstring(critical_remarks_str)
+                            # Parse with proper namespace handling
+                            parser = etree.XMLParser(remove_blank_text=True)
+                            cr_elem = etree.fromstring(critical_remarks_str.encode('utf-8'), parser)
                             notes_stmts[0].append(cr_elem)
                         except Exception as cr_e:
                             print(f"    |   [WARN] Could not parse critical remarks: {cr_e}", file=sys.stderr)
@@ -713,14 +941,14 @@ def main():
     first_level_works, edition_name, vol_slug = get_first_level_works_from_frbr(LOCAL_PATHS['frbr'])
     print(f"\nFound {len(first_level_works)} work(s) to process\n")
 
-    # Build edirom file
-    if build_edirom_file(first_level_works, edition_name, vol_slug):
+    # Prepare sources
+    if prepare_sources(first_level_works):
         print(f"  [OK] READY: Edition prepared for next steps\n")
     else:
         print(f"  [FAIL] FAILED: Edition skipped due to dependency errors\n")
-
-    # Prepare sources
-    if prepare_sources(first_level_works):
+    
+    # Build edirom file
+    if build_edirom_file(first_level_works, edition_name, vol_slug):
         print(f"  [OK] READY: Edition prepared for next steps\n")
     else:
         print(f"  [FAIL] FAILED: Edition skipped due to dependency errors\n")
