@@ -53,6 +53,7 @@ RUN git clone -b develop --single-branch --recursive https://github.com/Edirom/E
 WORKDIR /Edirom-Edition-Packaging
 COPY --from=prepare-content /app/Edirom/ .
 COPY --from=prepare-content /app/Edirom-Config/local.properties .
+COPY --from=prepare-content /app/Edirom-Config/prefs.xml .
 COPY --from=prepare-content /prepare-content.log .
 
 # Create output directory  
