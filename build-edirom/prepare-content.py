@@ -324,17 +324,15 @@ def prepare_sources(first_level_works: list) -> bool:
         
         for kb_file in kb_sources_files:
             if search_string == "":
-                print(LOCAL_PATHS['kbSources'] / "kb_sources.xml")
-                kb_sources_paths.append(LOCAL_PATHS['kbSources'] / "kb_sources.xml")
+                print(LOCAL_PATHS['kbSources'] / kb_file.name)
+                kb_sources_paths.append(LOCAL_PATHS['kbSources'] / kb_file.name)
                 break
             elif search_string in kb_file.name:
-                kb_sources_paths.append(kb_file)
+                kb_sources_paths.append(LOCAL_PATHS['kbSources'] / kb_file.name)
                 break
-            
-            
-            if not kb_sources_paths:
-                print(f"    |   [WARN] [W7] No kb_sources file found for '{search_string}' in {LOCAL_PATHS['kbSources']}", file=sys.stderr)
-                continue
+        
+        if not kb_sources_paths:
+            print(f"    |   [WARN] [W7] No kb_sources file found for '{search_string}' in {LOCAL_PATHS['kbSources']}", file=sys.stderr)
         
         for kb_file in kb_sources_paths:
             kb_file_parsed = etree.parse(kb_file)
