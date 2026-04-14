@@ -83,7 +83,11 @@ declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sour
 
 (: Parse JSON structure from csvPathsString :)
 let $csvData := if ($csvPathsString != '') then parse-json($csvPathsString) else ()
-let $sources := collection($sourcesPath)
+let $sources := try {
+  collection($sourcesPath)
+} catch * {
+  ()
+}
 
 let $editionBaseURI := 'xmldb:exist:///db/apps/edirom-content/' || $volSlug || '/' || $editionSlug || '/sources/'
 
