@@ -112,8 +112,9 @@ Das Projekt erwartet folgende Ordner in der **Projektroot**:
 
 **CSV-Format**:
 ```
-id,source1,source2,notes
-concord1,A1.m1,B2.m3,Verschreibung
+# [mdiv]_[measure]
+edition,siglumA,siglumB,siglumC
+1_1,1_1,1_1,1_1
 ```
 
 ### 5. Quellen
@@ -122,13 +123,11 @@ concord1,A1.m1,B2.m3,Verschreibung
 **Dateien**: `A-Wn_MS51588-4-01.xml`, `US-Wc_KC06-02.xml`, etc.  
 **Beschreibung**: MEI-kodierte Quellen/Handschriften
 
-**Dateinaming**: `[Sigle]_[Signatur].xml`  
-**Format**: Vollständige MEI-Kodierung der Handschrift
 
 ### 6. Edirom-Config
 
 **Ort**: `Edirom-Config/`  
-**Dateien**: `op9-nav.xml`, `op14-nav.xml`, etc.  
+**Dateien**: `nav.xml` oder bei mehreren Werken `[edition-slug]-nav.xml`
 **Beschreibung**: Navigationsstrukturen und Eigenschaften der Werke
 
 **XML-Format**:
