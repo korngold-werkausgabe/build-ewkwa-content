@@ -152,9 +152,10 @@ declare function local:buildSequence($sequence as node()*) as item()* {
 declare function local:buildSmufl($symbol as xs:string) as item()* {
   let $url := fn:replace($symbol, '.png', '.xml')
   return
-    <g
+    <graphic
       xmlns="http://www.music-encoding.org/ns/mei"
-      ref="{$url}">[Musikalisches Symbol]</g>
+      ref="{$url}"
+      type="smufl"/>
 };
 
 (:~
