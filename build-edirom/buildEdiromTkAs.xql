@@ -27,10 +27,16 @@ declare variable $cnListFile as xs:string? external := "";
 declare variable $collectionPath as xs:string external;
 declare variable $sourcesPath as xs:string external;
 declare variable $editionHandle as xs:string external;
+declare variable $volumeName as xs:string external;
 
 declare function local:normalize-text-nodes($node as node()) as node() {
   typeswitch($node)
-    case text() return text { normalize-space($node) }
+    case text() 
+      return 
+        if (normalize-space($node) = '') then 
+          $node 
+        else 
+          text { normalize-space($node) }
     case element() return element { node-name($node) } {
       $node/@*,
       for $child in $node/node()
@@ -50,10 +56,16 @@ declare function local:textRendition($node as node()?) as item()* {
       }">{$node/normalize-space()}</rend>
 };
 
-declare function local:buildSiglum($node as node()?) as item()* {
-  <rend
-    xmlns="http://www.music-encoding.org/ns/mei"
-    rend="bold">{$node/@siglum/normalize-space()}</rend>
+declare function local:buildSiglum($node as node()?, $sources as node()*, $editionHandle as xs:string, $volumeName as xs:string) as item()* {
+  let $sourceDoc := $sources//mei:mei[.//mei:identifier[text() = $node/@siglum/normalize-space()]][1]
+  let $filename := if ($sourceDoc) then
+    replace(base-uri($sourceDoc), '^(.*/)(.*?)\.\w+$', '$2')
+  else
+    "unknown"
+  return
+    <ref
+      xmlns="http://www.music-encoding.org/ns/mei"
+      target="xmldb:exist:///db/apps/edirom-content/{$volumeName}/{$editionHandle}/sources/{$filename}.xml">{$node/@siglum/normalize-space()}</ref>
 };
 
 (:~
@@ -156,6 +168,67 @@ declare function local:buildSmufl($symbol as xs:string) as item()* {
       xmlns="http://www.music-encoding.org/ns/mei"
       ref="{$url}"
       type="smufl"/>
+};
+
+(:~
+: Builds noteText content with proper spacing before siglum elements.
+: @param $nodes Sequence of nodes from noteText.
+: @param $sources Source documents.
+: @param $editionHandle Edition handle.
+: @param $volumeName Volume name.
+: @param $pos Current position in recursion.
+: @return Content with proper spacing.
+:)
+declare function local:buildNoteTextContent($nodes as node()*, $sources as node()*, $editionHandle as xs:string, $volumeName as xs:string, $pos as xs:integer) as item()* {
+  if ($pos > count($nodes)) then
+    ()
+  else
+    let $node := $nodes[$pos]
+    let $nextNode := $nodes[$pos + 1]
+    let $previousNode := $nodes[$pos - 1]
+    let $isCurrentElement := $node/name() != ''
+    let $isNextElement := $nextNode/name() != ''
+    let $isNextTextNode := not($isNextElement) and $nextNode/string() != ''
+    let $isPreviousElement := $previousNode/name() != ''
+    let $currentOutput := switch ($node/name())
+      case 'measures'
+        return
+          local:buildMeasures($node)
+      case 'siglum'
+        return
+          local:buildSiglum($node, $sources, $editionHandle, $volumeName)
+      case ('pitch')
+        return
+          local:buildPitch($node)
+      case ('chord')
+        return
+          local:buildChord($node)
+      case ('pitch-sequence')
+        return
+          local:buildSequence($node)
+      case ('musicalSymbol')
+        return
+          if ($node/@glyph.uri) then
+            local:buildSmufl($node/@glyph.uri)
+          else
+            ()
+      case ('rend')
+        return
+          local:textRendition($node)
+      default
+        return
+          let $nodeText := $node/string()
+          let $trimmedText := if ($isPreviousElement and starts-with($nodeText, ' ')) then
+            replace($nodeText, '^ +', ' ')
+          else if ($isNextElement and $nodeText != '' and not(ends-with($nodeText, ' '))) then
+            concat($nodeText, ' ')
+          else
+            $nodeText
+          return
+            $trimmedText
+    return
+      ($currentOutput,
+      local:buildNoteTextContent($nodes, $sources, $editionHandle, $volumeName, $pos + 1))
 };
 
 (:~
@@ -307,6 +380,15 @@ let $criticalNotes :=
   for $note in $cnListNode//*:criticalNote
     let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $cnListNode/*:kb/@mainSource/string(), $cnListNode/*:kb/@n/string()), $editionHandle)
     (:      let $mainSourcePlist := "TEST":)
+    let $titleText := 
+      string-join(
+        (
+          if ($note/*:measures[normalize-space()]) then concat('T. ', $note/*:measures/normalize-space()) else (),
+          if ($note/*:staff[normalize-space()]) then $note/*:staff/normalize-space() else (),
+          if ($note/*:musicalEvent[normalize-space()]) then $note/*:musicalEvent/normalize-space() else ()
+        )[. != ''],
+        ' | '
+      )
     return
       <annot
         xmlns="http://www.music-encoding.org/ns/mei"
@@ -324,36 +406,7 @@ let $criticalNotes :=
           }</title>
         <p
           lang="de">{
-            for $node in $note/*:noteText/node()
-            return
-              switch ($node/name())
-                case 'measures'
-                  return
-                    local:buildMeasures($node)
-                case 'siglum'
-                  return
-                    local:buildSiglum($node)
-                case ('pitch')
-                  return
-                    local:buildPitch($node)
-                case ('chord')
-                  return
-                    local:buildChord($node)
-                case ('pitch-sequence')
-                  return
-                    local:buildSequence($node)
-                case ('musicalSymbol')
-                  return
-                    if ($node/@glyph.uri) then
-                      local:buildSmufl($node/@glyph.uri)
-                    else
-                      ()
-                case ('rend')
-                  return
-                    local:textRendition($node)
-                default
-                return
-                  $node/string()
+            local:buildNoteTextContent($note/*:noteText/node(), $sources, $editionHandle, $volumeName, 1)
         }
       </p>
       <ptr
@@ -365,5 +418,4 @@ let $criticalNotes :=
     </annot>
 
 return
-  for $annot in $criticalNotes
-  return local:normalize-text-nodes($annot)
+  $criticalNotes
