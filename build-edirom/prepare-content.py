@@ -308,79 +308,84 @@ def prepare_sources(first_level_works: list) -> bool:
     for work in first_level_works:
         work_type = work.xpath('./@type', namespaces=NAMESPACES)[0]
         edition_slug = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
-        search_string = ""
 
         print(f"    +-- Processing sources for '{edition_slug}'")
         
+        # Collect all search strings from sub-works
+        search_strings = []
         if work_type == 'collection':
-            for sub_work in get_second_level_works(work) :
-                search_string = sub_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]  
-        #elif work_type == 'singleton':
-        #    search_string = edition_slug
+            for sub_work in get_second_level_works(work):
+                search_string = sub_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
+                search_strings.append(search_string)
+        else:
+            search_strings = [edition_slug]
+        
+        # Process each search string to find and process its kb_sources file
+        for search_string in search_strings:
+            kb_sources_files = list(LOCAL_PATHS['kbSources'].glob('kb_sources*.xml'))
+            kb_sources_paths = []
             
-        # Find corresponding kb_sources file by matching search_string in filename
-        kb_sources_files = list(LOCAL_PATHS['kbSources'].glob('kb_sources*.xml'))
-        kb_sources_paths = []
-        
-        for kb_file in kb_sources_files:
-            if search_string == "":
-                print(LOCAL_PATHS['kbSources'] / kb_file.name)
-                kb_sources_paths.append(LOCAL_PATHS['kbSources'] / kb_file.name)
-                break
-            elif search_string in kb_file.name:
-                kb_sources_paths.append(LOCAL_PATHS['kbSources'] / kb_file.name)
-                break
-        
-        if not kb_sources_paths:
-            print(f"    |   [WARN] [W7] No kb_sources file found for '{search_string}' in {LOCAL_PATHS['kbSources']}", file=sys.stderr)
-        
-        for kb_file in kb_sources_paths:
-            kb_file_parsed = etree.parse(kb_file)
-            kb_file_root = kb_file_parsed.getroot()
-            sources = kb_file_root.xpath('//source', namespaces=NAMESPACES)
+            for kb_file in kb_sources_files:
+                if search_string == "":
+                    kb_sources_paths.append(LOCAL_PATHS['kbSources'] / kb_file.name)
+                    break
+                elif search_string in kb_file.name:
+                    kb_sources_paths.append(LOCAL_PATHS['kbSources'] / kb_file.name)
+                    break
             
-            for source in sources:
-                source_file_id = source.xpath('./@target', namespaces=NAMESPACES)[0] if source.xpath('./@target', namespaces=NAMESPACES) else source.xpath('./@xml:id', namespaces=NAMESPACES)[0]
-                source_title = source.xpath('./shortTitle/text()', namespaces=NAMESPACES)[0] if source.xpath('./shortTitle/text()', namespaces=NAMESPACES) else "No title found"
-                source_siglum = source.xpath('./siglum/text()', namespaces=NAMESPACES)[0] if source.xpath('./siglum/text()', namespaces=NAMESPACES) else "Siglum not found"
-                source_file = get_related_file(source_file_id, LOCAL_PATHS['sources'], '*.xml', 'by_id')
+            # Fallback: if no matching file found, use default kb_sources.xml for singletons
+            if not kb_sources_paths and work_type != 'collection':
+                default_kb_sources = LOCAL_PATHS['kbSources'] / 'kb_sources.xml'
+                if default_kb_sources.exists():
+                    kb_sources_paths.append(default_kb_sources)
+            
+            if not kb_sources_paths:
+                print(f"    |   [WARN] [W7] No kb_sources file found for '{search_string}' in {LOCAL_PATHS['kbSources']}", file=sys.stderr)
+                continue
+            
+            for kb_file in kb_sources_paths:
+                kb_file_parsed = etree.parse(kb_file)
+                kb_file_root = kb_file_parsed.getroot()
+                sources = kb_file_root.xpath('//source', namespaces=NAMESPACES)
                 
-                if not source_file:
-                    print(f"    |   [WARN] [W8] Source file not found for '{source_file_id}' - skipping", file=sys.stderr)
-                    continue
-                
-                try:
-                    print(f"    +-- Step 2.2: Prepare and copy source file")
-                    prepare_sources_xsl = LOCAL_PATHS['scripts'] / 'prepareSources.xsl'
-                    source_file = (LOCAL_PATHS['sources'] / source_file).resolve()
+                for source in sources:
+                    source_file_id = source.xpath('./@target', namespaces=NAMESPACES)[0] if source.xpath('./@target', namespaces=NAMESPACES) else source.xpath('./@xml:id', namespaces=NAMESPACES)[0]
+                    source_title = source.xpath('./shortTitle/text()', namespaces=NAMESPACES)[0] if source.xpath('./shortTitle/text()', namespaces=NAMESPACES) else "No title found"
+                    source_siglum = source.xpath('./siglum/text()', namespaces=NAMESPACES)[0] if source.xpath('./siglum/text()', namespaces=NAMESPACES) else "Siglum not found"
+                    source_file = get_related_file(source_file_id, LOCAL_PATHS['sources'], '*.xml', 'by_id')
+                    
+                    if not source_file:
+                        print(f"    |   [WARN] [W8] Source file not found for '{source_file_id}' - skipping", file=sys.stderr)
+                        continue
+                    
+                    try:
+                        print(f"    +-- Step 2.2: Prepare and copy source file")
+                        prepare_sources_xsl = LOCAL_PATHS['scripts'] / 'prepareSources.xsl'
+                        source_file = (LOCAL_PATHS['sources'] / source_file).resolve()
 
-                    result = subprocess.run([
-                        'xsltproc',
-                        '--stringparam', 'title', source_title,
-                        '--stringparam', 'siglum', source_siglum,
-                        str(prepare_sources_xsl),
-                        str(source_file),
-                    ], capture_output=True, text=True, check=True)
-                    print(f"    |   |   [OK] prepareSources.xsl processed")
-                    # Save - xsltproc already outputs formatted XML with declaration
-                    # Use original filename instead of source_file_id
-                    original_filename = source_file.name
-                    if work_type == 'collection':
+                        result = subprocess.run([
+                            'xsltproc',
+                            '--stringparam', 'title', source_title,
+                            '--stringparam', 'siglum', source_siglum,
+                            str(prepare_sources_xsl),
+                            str(source_file),
+                        ], capture_output=True, text=True, check=True)
+                        print(f"    |   |   [OK] prepareSources.xsl processed")
+                        # Save - xsltproc already outputs formatted XML with declaration
+                        # Use original filename instead of source_file_id
+                        original_filename = source_file.name
                         source_output_path = LOCAL_PATHS['_edirom'] / edition_slug / "sources" / original_filename
-                    else:
-                        source_output_path = LOCAL_PATHS['_edirom'] / edition_slug / "sources" / original_filename
-                    source_output_path.parent.mkdir(parents=True, exist_ok=True)
-                    create_file(result.stdout, source_output_path, format_xml=True)
-                except subprocess.CalledProcessError as e:
-                    print(f"    |   |   [FAIL] [E1] prepareSources.xsl failed: {e.stderr}", file=sys.stderr)
-                    continue
-            
-        # run script to prepare source and copy in tmp/edition_slug/sources/ -> TODO: Filename?
+                        source_output_path.parent.mkdir(parents=True, exist_ok=True)
+                        create_file(result.stdout, source_output_path, format_xml=True)
+                    except subprocess.CalledProcessError as e:
+                        print(f"    |   |   [FAIL] [E1] prepareSources.xsl failed: {e.stderr}", file=sys.stderr)
+                        continue
     
     print(f"    |   [OK] Source files complete")
     return True
+    return True
 
-def build_critical_remarks(cnl_xml: str, sources_path: str, edition_slug: str) -> str:
+def build_critical_remarks(cnl_xml: str, sources_path: str, edition_slug: str, vol_slug: str) -> str:
     """ Call buildEdiromTkAs.xql to build critical remarks (annots) """   
     try:
         build_tk_as_xql = LOCAL_PATHS['scripts'] / 'buildEdiromTkAs.xql'
@@ -400,6 +405,7 @@ def build_critical_remarks(cnl_xml: str, sources_path: str, edition_slug: str) -
                 f'-b collectionPath={collection_path_abs}',
                 f'-b sourcesPath={sources_path_abs}',
                 f'-b editionHandle={edition_slug}',
+                f'-b volumeName={vol_slug}',
                 str(build_tk_as_xql)
             ], capture_output=True, text=True, check=True)
             print(f"    |   |   [OK] buildEdiromTkAs.xql processed")
@@ -466,7 +472,7 @@ def _get_cnl_xml(cnl_id: str, subdirectory: str = None) -> etree._Element:
         print(f"    |   [FAIL] Failed to parse cnl file: {e}", file=sys.stderr)
         return None
 
-def build_works_file(first_level_works: list, edition_name: str) -> bool:
+def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) -> bool:
     """ Build works.xml file for each first-level work (one file per work, with possible multiple expressions) """
     print(f"+-- Step 3: Build Works Files")
     
@@ -479,7 +485,7 @@ def build_works_file(first_level_works: list, edition_name: str) -> bool:
         print(f"    +-- Building works.xml for '{edition_slug}' ({work_type})")
         
         # Build single work element with main expression
-        work_element = _build_work_element_with_components(first_level_work, edition_slug, work_type)
+        work_element = _build_work_element_with_components(first_level_work, edition_slug, work_type, edition_name, vol_slug)
         if work_element is None:
             print(f"    |   [WARN] No work element created for {edition_slug}", file=sys.stderr)
             continue
@@ -530,7 +536,7 @@ def build_works_file(first_level_works: list, edition_name: str) -> bool:
                                     for cnl_id in cnl_ids:
                                         cnl_xml = _get_cnl_xml(cnl_id, subdirectory=component_slug)
                                         if cnl_xml is not None:
-                                            critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], component_slug)
+                                            critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug, vol_slug)
                                             if critical_remarks_str:
                                                 try:
                                                     parser = etree.XMLParser(remove_blank_text=True)
@@ -632,7 +638,7 @@ def _build_work_element_from_component(component_expr: etree._Element, component
         notes_stmts = work_element.xpath('.//mei:notesStmt')
         if notes_stmts:
             if cnl_xml is not None:
-                critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], component_slug)
+                critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], component_slug, vol_slug)
                 if critical_remarks_str:
                     try:
                         parser = etree.XMLParser(remove_blank_text=True)
@@ -656,7 +662,7 @@ def _build_work_element_from_component(component_expr: etree._Element, component
         print(f"    |   |   [WARN] Failed to build work element for component: {e}", file=sys.stderr)
         return None
 
-def _build_work_element_with_components(first_level_work: etree._Element, edition_slug: str, work_type: str) -> etree._Element:
+def _build_work_element_with_components(first_level_work: etree._Element, edition_slug: str, work_type: str, edition_name: str, vol_slug: str) -> etree._Element:
     """ 
     Helper: Build a single work element with nested components if it's a collection.
     For collections: Creates a first-level work with a componentList containing second-level works.
@@ -770,7 +776,7 @@ def _build_work_element_with_components(first_level_work: etree._Element, editio
                 component_notes_stmts = component_element.xpath('.//mei:notesStmt', namespaces=NAMESPACES)
                 if component_notes_stmts:
                     if cnl_xml is not None:
-                        critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug)
+                        critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug, vol_slug)
                         if critical_remarks_str:
                             try:
                                 # Parse with proper namespace handling
@@ -804,7 +810,7 @@ def _build_work_element_with_components(first_level_work: etree._Element, editio
             notes_stmts = work_element.xpath('.//mei:notesStmt', namespaces=NAMESPACES)
             if notes_stmts:
                 if cnl_xml is not None:
-                    critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug)
+                    critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug, vol_slug)
                     if critical_remarks_str:
                         try:
                             # Parse with proper namespace handling
@@ -952,7 +958,7 @@ def main():
         print(f"  [FAIL] FAILED: Edition skipped due to dependency errors\n")
 
     # Build works file
-    if build_works_file(first_level_works, edition_name):
+    if build_works_file(first_level_works, edition_name, vol_slug):
         print(f"  [OK] READY: Edition prepared for next steps\n")
     else:
         print(f"  [FAIL] FAILED: Edition skipped due to dependency errors\n")
