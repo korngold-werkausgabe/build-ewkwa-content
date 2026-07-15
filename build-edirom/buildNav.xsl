@@ -5,7 +5,7 @@
     version="1.0">
 
     <xsl:output indent="yes" />
-    <xsl:param name="editionSlug"></xsl:param>
+    <xsl:param name="subDiv"></xsl:param>
     <xsl:param name="volSlug"></xsl:param>
     
     <xsl:template match="@*|text()">
@@ -22,7 +22,16 @@
     
     <xsl:template match="navigatorDefinition">
         <navigatorDefinition>
-            <xsl:attribute name="xml:id"><xsl:value-of select="$editionSlug"/>_navDef</xsl:attribute>
+            <xsl:attribute name="xml:id">
+            <xsl:choose>
+                <xsl:when test="$subDiv and $subDiv != '' and $subDiv != 'None'">
+                    <xsl:value-of select="concat($subDiv, '_navDef')"/>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:value-of select="'navDef'"/>
+                </xsl:otherwise>
+            </xsl:choose>
+            </xsl:attribute>
             <xsl:apply-templates select="@*[name() != 'xml:id']|node()"/>
         </navigatorDefinition>
     </xsl:template>
@@ -30,7 +39,16 @@
     <xsl:template match="navigatorCategory">
         <xsl:variable name="catPos" select="count(preceding-sibling::navigatorCategory) + 1"/>
         <navigatorCategory>
-            <xsl:attribute name="xml:id"><xsl:value-of select="$editionSlug"/>_cat_<xsl:value-of select="$catPos"/></xsl:attribute>
+            <xsl:attribute name="xml:id">
+            <xsl:choose>
+                <xsl:when test="$subDiv and $subDiv != '' and $subDiv != 'None'">
+                    <xsl:value-of select="concat($subDiv, '_cat_', $catPos)"/>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:value-of select="concat('cat_', $catPos)"/>
+                </xsl:otherwise>
+            </xsl:choose>
+            </xsl:attribute>
             <xsl:apply-templates select="@*[name() != 'xml:id' and name() != 'sortNo']|node()"/>
         </navigatorCategory>
     </xsl:template>
@@ -39,9 +57,30 @@
         <xsl:variable name="catPos" select="count(ancestor::navigatorCategory/preceding-sibling::navigatorCategory) + 1"/>
         <xsl:variable name="itemPos" select="count(preceding-sibling::navigatorItem) + 1"/>
         <navigatorItem>
-            <xsl:attribute name="xml:id"><xsl:value-of select="$editionSlug"/>_item_<xsl:value-of select="$catPos"/>_<xsl:value-of select="$itemPos"/></xsl:attribute>
+            <xsl:attribute name="xml:id">
+            <xsl:choose>
+                <xsl:when test="$subDiv and $subDiv != '' and $subDiv != 'None'">
+                    <xsl:value-of select="concat($subDiv, '_item_', $catPos, '_', $itemPos)"/>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:value-of select="concat('item_', $catPos, '_', $itemPos)"/>
+                </xsl:otherwise>
+            </xsl:choose>
+            </xsl:attribute>
             <xsl:attribute name="sortNo"><xsl:value-of select="$itemPos"/></xsl:attribute>
-            <xsl:attribute name="targets">xmldb:exist:///db/apps/edirom-content/<xsl:value-of select="$volSlug"/>/<xsl:value-of select="$editionSlug"/>/<xsl:value-of select="@targets"/></xsl:attribute>            <xsl:apply-templates select="@*[name() != 'targets']|node()"/>
+            <xsl:attribute name="targets">  
+                <xsl:text>xmldb:exist:///db/apps/edirom-content/</xsl:text>  
+                <xsl:value-of select="$volSlug"/>
+                <xsl:text>/</xsl:text>  
+                <xsl:choose>
+                    <xsl:when test="$subDiv and $subDiv != '' and $subDiv != 'None'">
+                        <xsl:value-of select="concat($subDiv, '_cat_', $catPos)"/>
+                    </xsl:when>
+                    <xsl:otherwise/>
+                </xsl:choose>
+                <xsl:value-of select="@targets"/>
+            </xsl:attribute>
+            <xsl:apply-templates select="@*[name() != 'targets']|node()"/>
         </navigatorItem>
     </xsl:template>
     

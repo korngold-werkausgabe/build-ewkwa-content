@@ -51,10 +51,10 @@ RUN apt-get update \
 RUN git clone -b develop --single-branch --recursive https://github.com/Edirom/Edirom-Edition-Packaging.git
 
 WORKDIR /Edirom-Edition-Packaging
-#COPY --from=prepare-content /app/Edirom/ .
 COPY --from=prepare-content /app/Edirom-Config/local.properties .
 COPY --from=prepare-content /app/Edirom-Config/*prefs.xml .
 COPY --from=prepare-content /prepare-content.log .
+COPY --from=prepare-content /app/Edirom/. .
 
 # Create output directory  
 RUN mkdir -p /output

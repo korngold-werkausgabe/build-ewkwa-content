@@ -56,19 +56,6 @@ def get_component_expressions(expression: etree._Element) -> list:
     if component_list:
         return expression.xpath('./mei:componentList/mei:expression', namespaces=NAMESPACES)
     return []
-    
-def get_nav(work: etree._Element) -> str:
-    """ Get filename of nav.xml for a given first-level work """
-    rel_has_part = work.xpath('./mei:relationList/mei:relation[@rel="hasPart"]/@plist', namespaces=NAMESPACES)
-    nav_id = None
-
-    for id in rel_has_part:
-        id_clean = id.lstrip('#')
-        if 'nav' in id_clean:
-            nav_id = id_clean
-            break
-
-    return get_related_file(nav_id, LOCAL_PATHS['edirom-config'], '*.xml', 'by_id') if nav_id else None
 
 def get_concordances(work: etree._Element) -> str:
     """ Get correct concordance.csv for first-level work and return as JSON string """
@@ -76,10 +63,10 @@ def get_concordances(work: etree._Element) -> str:
     results = []
     if work.xpath('./@type', namespaces=NAMESPACES)[0] == 'collection':
         for sub_work in get_second_level_works(work):
-            edition_slug = sub_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
+            sub_div = sub_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if sub_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else ""
             title_de = sub_work.xpath('./mei:title[@xml:lang="de"]/text()', namespaces=NAMESPACES)
             title_en = sub_work.xpath('./mei:title[@xml:lang="en"]/text()', namespaces=NAMESPACES)
-            file = get_related_file(edition_slug, LOCAL_PATHS['conc'], '*.csv', 'by_filename')
+            file = _get_rel_file(sub_div, LOCAL_PATHS['conc'], '*.csv', 'by_filename')
             if file:
                 results.append({
                     "title_de": title_de[0] if title_de else "", 
@@ -88,11 +75,11 @@ def get_concordances(work: etree._Element) -> str:
                 })
     else:
         for mdiv in work.xpath('.//mei:contentItem[@type="mdiv"]', namespaces=NAMESPACES):
-            edition_slug = mdiv.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
+            sub_div = mdiv.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if mdiv.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else ""
             title_de = mdiv.xpath('.//mei:title[@xml:lang="de"]/text()', namespaces=NAMESPACES)[0]
             title_en = mdiv.xpath('.//mei:title[@xml:lang="en"]/text()', namespaces=NAMESPACES)[0]
 
-            file = get_related_file(edition_slug, LOCAL_PATHS['conc'], '*.csv', 'by_filename')
+            file = _get_rel_file(sub_div, LOCAL_PATHS['conc'], '*.csv', 'by_filename')
             if file:
                 results.append({
                     "title_de": title_de if title_de else "", 
@@ -101,7 +88,7 @@ def get_concordances(work: etree._Element) -> str:
                 })
     return json.dumps(results) if results else None
 
-def get_related_file(search_string, path, file_type, search_type: str) -> str:
+def _get_rel_file(search_string, path, file_type, search_type: str) -> str:
     """ Helper function to find related files (nav, cnl, etc.) based on file name or ID """
     result = None
     if search_type == 'by_id':
@@ -128,8 +115,8 @@ def get_related_file(search_string, path, file_type, search_type: str) -> str:
         print(f"    |   |   [WARN] [W2] No file with '{search_string}' in name found in {path}", file=sys.stderr)
         return None
 
-def build_nav(nav_path, vol_slug: str, edition_slug: str) -> str:
-    """ Call buildNav.xsl with volSlug and editionSlug parameters """
+def build_nav(nav_path, vol_slug: str, sub_div: str) -> str:
+    """ Call buildNav.xsl with volSlug and subDiv parameters """
     try:
         build_nav_xsl = LOCAL_PATHS['scripts'] / 'buildNav.xsl'
         nav_path_abs = Path(nav_path).resolve()  # Absolut path
@@ -137,7 +124,7 @@ def build_nav(nav_path, vol_slug: str, edition_slug: str) -> str:
         result = subprocess.run([
             'xsltproc',
             '--stringparam', 'volSlug', vol_slug,
-            '--stringparam', 'editionSlug', edition_slug,
+            '--stringparam', 'subDiv', sub_div,
             str(build_nav_xsl),
             str(nav_path_abs)
         ], capture_output=True, text=True, check=True)
@@ -147,7 +134,7 @@ def build_nav(nav_path, vol_slug: str, edition_slug: str) -> str:
         print(f"    |   |   [FAIL] [E1] buildNav.xsl failed: {e.stderr}", file=sys.stderr)
         return None
     
-def build_concordances(conc_json: str, groups_titles: list, sources_path: str, edition_slug: str, vol_slug: str) -> str:
+def build_concordances(conc_json: str, groups_titles: list, sources_path: str, sub_div: str, vol_slug: str) -> str:
     """ Call buildConnectionsByCSV.xql with concordance JSON and sources using basex """
     try:
         if not conc_json:
@@ -161,7 +148,7 @@ def build_concordances(conc_json: str, groups_titles: list, sources_path: str, e
             'basex',
             f'-b csvPathsString={conc_json}',
             f'-b sourcesPath={sources_path_abs}',
-            f'-b editionSlug={edition_slug}',
+            f'-b subDiv={sub_div}',
             f'-b volSlug={vol_slug}',
             f'-b propertiesPath={Path("properties.xml").resolve()}',
             f'-b groupsTitleDe={groups_titles["de"]}',
@@ -191,32 +178,33 @@ def build_edirom_file(works: list, edition_name: str, vol_slug: str) -> bool:
         print(f"    +-- Processing {xid + 1}/{len(works)}: '{work_title}'")
         work_type = work.xpath('./@type', namespaces=NAMESPACES)[0]
         edition_id = work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0]
-        edition_slug = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]     # Create tmp directory for this edition
-        tmp_path = LOCAL_PATHS['tmp'] / edition_slug
+        sub_div = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else ""
+        tmp_path = LOCAL_PATHS['tmp'] / sub_div if sub_div else LOCAL_PATHS['tmp']
         tmp_path.mkdir(parents=True, exist_ok=True)
         # Create output directory for this edition
         output_path = LOCAL_PATHS['_edirom']
         output_path.mkdir(parents=True, exist_ok=True)
     
         # Step 1: Build Nav
-        print(f"    |   +-- Step 1.1: Build Navigation ({edition_slug})")
-        nav_file = get_nav(work)
-        if not nav_file:
+        print(f"    |   +-- Step 1.1: Build Navigation ({sub_div})")
+        nav_id = _get_rel_by_id(work, edition_id, type='nav')[0] if _get_rel_by_id(work, edition_id, type='nav') else None
+        nav_file = _get_rel_file(nav_id, LOCAL_PATHS['edirom-config'], '*.xml', 'by_id') if nav_id else None
+        if nav_file is None:
             print(f"    |   |   [WARN] [W4] No nav file found - using empty fallback", file=sys.stderr)
             nav_output = "<navigatorDefinition/>"
         else:
-            nav_output = build_nav(LOCAL_PATHS['edirom-config'] / nav_file, vol_slug, edition_slug)
+            nav_output = build_nav(LOCAL_PATHS['edirom-config'] / nav_file, vol_slug, sub_div)
             if not nav_output:
                 print(f"    |   |   [WARN] [W4b] build_nav failed - using empty fallback", file=sys.stderr)
                 nav_output = "<navigatorDefinition/>"
         
         # Save nav output to tmp file
-        nav_path = tmp_path / f"{edition_slug}_nav.xml"
+        nav_path = tmp_path / f"{sub_div}_nav.xml" if sub_div else tmp_path / "nav.xml"
         create_file(nav_output, nav_path, format_xml=True)
         print(f"    |   |   [OK] Navigation complete")
         
         # Step 2: Build Concordances
-        print(f"    |   +-- Step 1.2: Build Concordances ({edition_slug})")
+        print(f"    |   +-- Step 1.2: Build Concordances ({sub_div})")
         conc_files = get_concordances(work)
         if not conc_files:
             print(f"    |   |   [WARN] [W5] No concordance files found - using empty fallback", file=sys.stderr)
@@ -238,27 +226,31 @@ def build_edirom_file(works: list, edition_name: str, vol_slug: str) -> bool:
                 'en': title_en[0] if title_en else ''
             }
             
-            concordance_output = build_concordances(conc_files, groups_titles, f"{LOCAL_PATHS['_edirom']}/{edition_slug}/sources", edition_slug, vol_slug)
+            concordance_output = build_concordances(conc_files, groups_titles, f"{LOCAL_PATHS['_edirom']}/{sub_div}/sources", sub_div, vol_slug)
             if not concordance_output:
                 print(f"    |   |   [WARN] [W5b] build_concordances failed - using empty fallback", file=sys.stderr)
                 concordance_output = "<concordances/>"
             
             # Save concordance output to tmp file
-            conc_path = tmp_path / f"{edition_slug}_concordance.xml"
+            conc_path = tmp_path / f"{sub_div}_concordance.xml" if sub_div else tmp_path / "concordance.xml"
             create_file(concordance_output, conc_path, format_xml=True)
             print(f"    |   |   [OK] Concordance complete")
 
         # Build work element in edirom namespace (outside if/else to ensure always created)
         work_xml_id = work.xpath('./@xml:id', namespaces=NAMESPACES)[0]
+        href = (f"xmldb:exist:///db/apps/edirom-content/{vol_slug}/{sub_div}/{sub_div}_works.xml"
+                if sub_div else
+                f"xmldb:exist:///db/apps/edirom-content/{vol_slug}/works.xml")
+
         work_element = etree.Element(
             '{%s}work' % NAMESPACES['edirom'], 
             attrib={
-                '{%s}id' % NAMESPACES['xml']: work_xml_id, 
+                '{%s}id' % NAMESPACES['xml']: work_xml_id,
                 'sortNo': str(xid + 1),
-                '{%s}href' % NAMESPACES['xlink']: f"xmldb:exist:///db/apps/edirom-content/{vol_slug}/{edition_slug}/{edition_slug}_works.xml"
+                '{%s}href' % NAMESPACES['xlink']: href,
             },
-            nsmap={'xlink': NAMESPACES['xlink']}
-        )
+            nsmap={'xlink': NAMESPACES['xlink']}  
+)
 
         # Add navigation (guaranteed to have valid XML from fallback)
         nav_element = etree.fromstring(nav_output)
@@ -282,12 +274,13 @@ def build_edirom_file(works: list, edition_name: str, vol_slug: str) -> bool:
         print(f"    +-- Step 1.3: Create Edirom File")
         build_edirom_file_xsl = LOCAL_PATHS['scripts'] / 'buildEdiromFile.xsl'
         edirom_file_template_path = (LOCAL_PATHS['templates'] / 'template_edirom-file.xml').resolve()
+        edition_prefs_path = f"{vol_slug}/{sub_div}" if sub_div else f"{vol_slug}"
 
         result = subprocess.run([
             'xsltproc',
             '--stringparam', 'editionId', edition_id,
             '--stringparam', 'editionName', edition_name,
-            '--stringparam', 'editionPrefsPath', f"{vol_slug}/{edition_slug}",
+            '--stringparam', 'editionPrefsPath', edition_prefs_path,
             '--stringparam', 'editionWorksPath', str(works_file_path.resolve()),
             str(build_edirom_file_xsl),
             str(edirom_file_template_path),
@@ -306,91 +299,66 @@ def prepare_sources(first_level_works: list) -> bool:
     print(f"+-- Step 2: Prepare Source Files")
     
     for work in first_level_works:
-        work_type = work.xpath('./@type', namespaces=NAMESPACES)[0]
-        edition_slug = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
+        sub_div = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else None
+        ex_id = work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0]
 
-        print(f"    +-- Processing sources for '{edition_slug}'")
+        kb_sources_ids = _get_rel_by_id(work, ex_id, type='srcs')
         
-        # Collect all search strings from sub-works
-        search_strings = []
-        if work_type == 'collection':
-            for sub_work in get_second_level_works(work):
-                search_string = sub_work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
-                search_strings.append(search_string)
-        else:
-            search_strings = [edition_slug]
+        for kb_sources_id in kb_sources_ids:
+            listSources = _get_rel_xml(kb_sources_id, type='srcs')
+            
+        if listSources is None:
+            print(f"    |   [WARN] [W7] No kb_sources file found for '{kb_sources_id}' in {LOCAL_PATHS['kbSources']}", file=sys.stderr)
+            continue
         
-        # Process each search string to find and process its kb_sources file
-        for search_string in search_strings:
-            kb_sources_files = list(LOCAL_PATHS['kbSources'].glob('kb_sources*.xml'))
-            kb_sources_paths = []
+        for source in listSources.xpath('//source', namespaces=NAMESPACES):
+            source_file_id = source.xpath('./@target', namespaces=NAMESPACES)[0] if source.xpath('./@target', namespaces=NAMESPACES) else source.xpath('./@xml:id', namespaces=NAMESPACES)[0]
+            source_title = source.xpath('./shortTitle/text()', namespaces=NAMESPACES)[0] if source.xpath('./shortTitle/text()', namespaces=NAMESPACES) else "No title found"
+            source_siglum = source.xpath('./siglum/text()', namespaces=NAMESPACES)[0] if source.xpath('./siglum/text()', namespaces=NAMESPACES) else "Siglum not found"
+            source_file = _get_rel_file(source_file_id, LOCAL_PATHS['sources'], '*.xml', 'by_id')
             
-            for kb_file in kb_sources_files:
-                if search_string == "":
-                    kb_sources_paths.append(LOCAL_PATHS['kbSources'] / kb_file.name)
-                    break
-                elif search_string in kb_file.name:
-                    kb_sources_paths.append(LOCAL_PATHS['kbSources'] / kb_file.name)
-                    break
-            
-            # Fallback: if no matching file found, use default kb_sources.xml for singletons
-            if not kb_sources_paths and work_type != 'collection':
-                default_kb_sources = LOCAL_PATHS['kbSources'] / 'kb_sources.xml'
-                if default_kb_sources.exists():
-                    kb_sources_paths.append(default_kb_sources)
-            
-            if not kb_sources_paths:
-                print(f"    |   [WARN] [W7] No kb_sources file found for '{search_string}' in {LOCAL_PATHS['kbSources']}", file=sys.stderr)
+            if not source_file:
+                print(f"    |   [WARN] [W8] Source file not found for '{source_file_id}' - skipping", file=sys.stderr)
                 continue
+            else: 
+                print(f"    |   +-- Preparing source file '{source_file}' for '{source_title}' ({source_siglum})")
             
-            for kb_file in kb_sources_paths:
-                kb_file_parsed = etree.parse(kb_file)
-                kb_file_root = kb_file_parsed.getroot()
-                sources = kb_file_root.xpath('//source', namespaces=NAMESPACES)
-                
-                for source in sources:
-                    source_file_id = source.xpath('./@target', namespaces=NAMESPACES)[0] if source.xpath('./@target', namespaces=NAMESPACES) else source.xpath('./@xml:id', namespaces=NAMESPACES)[0]
-                    source_title = source.xpath('./shortTitle/text()', namespaces=NAMESPACES)[0] if source.xpath('./shortTitle/text()', namespaces=NAMESPACES) else "No title found"
-                    source_siglum = source.xpath('./siglum/text()', namespaces=NAMESPACES)[0] if source.xpath('./siglum/text()', namespaces=NAMESPACES) else "Siglum not found"
-                    source_file = get_related_file(source_file_id, LOCAL_PATHS['sources'], '*.xml', 'by_id')
-                    
-                    if not source_file:
-                        print(f"    |   [WARN] [W8] Source file not found for '{source_file_id}' - skipping", file=sys.stderr)
-                        continue
-                    
-                    try:
-                        print(f"    +-- Step 2.2: Prepare and copy source file")
-                        prepare_sources_xsl = LOCAL_PATHS['scripts'] / 'prepareSources.xsl'
-                        source_file = (LOCAL_PATHS['sources'] / source_file).resolve()
+            try:
+                print(f"    +-- Step 2.2: Prepare and copy source file")
+                prepare_sources_xsl = LOCAL_PATHS['scripts'] / 'prepareSources.xsl'
+                source_file = (LOCAL_PATHS['sources'] / source_file).resolve()
 
-                        result = subprocess.run([
-                            'xsltproc',
-                            '--stringparam', 'title', source_title,
-                            '--stringparam', 'siglum', source_siglum,
-                            str(prepare_sources_xsl),
-                            str(source_file),
-                        ], capture_output=True, text=True, check=True)
-                        print(f"    |   |   [OK] prepareSources.xsl processed")
-                        # Save - xsltproc already outputs formatted XML with declaration
-                        # Use original filename instead of source_file_id
-                        original_filename = source_file.name
-                        source_output_path = LOCAL_PATHS['_edirom'] / edition_slug / "sources" / original_filename
-                        source_output_path.parent.mkdir(parents=True, exist_ok=True)
-                        create_file(result.stdout, source_output_path, format_xml=True)
-                    except subprocess.CalledProcessError as e:
-                        print(f"    |   |   [FAIL] [E1] prepareSources.xsl failed: {e.stderr}", file=sys.stderr)
-                        continue
+                result = subprocess.run([
+                    'xsltproc',
+                    '--stringparam', 'title', source_title,
+                    '--stringparam', 'siglum', source_siglum,
+                    str(prepare_sources_xsl),
+                    str(source_file),
+                ], capture_output=True, text=True, check=True)
+                print(f"    |   |   [OK] prepareSources.xsl processed")
+                # Save - xsltproc already outputs formatted XML with declaration
+                # Use original filename instead of source_file_id
+                original_filename = source_file.name
+                if sub_div:
+                    source_output_path = LOCAL_PATHS['_edirom'] / sub_div / "sources" / original_filename
+                else:
+                    source_output_path = LOCAL_PATHS['_edirom'] / "sources" / original_filename
+                source_output_path.parent.mkdir(parents=True, exist_ok=True)
+
+                create_file(result.stdout, source_output_path, format_xml=True)
+            except subprocess.CalledProcessError as e:
+                print(f"    |   |   [FAIL] [E1] prepareSources.xsl failed: {e.stderr}", file=sys.stderr)
+                continue
     
     print(f"    |   [OK] Source files complete")
     return True
-    return True
 
-def build_critical_remarks(cnl_xml: str, sources_path: str, edition_slug: str, vol_slug: str) -> str:
+def build_critical_remarks(cnl_xml: str, sources_path: str, sub_div: str, vol_slug: str) -> str:
     """ Call buildEdiromTkAs.xql to build critical remarks (annots) """   
     try:
         build_tk_as_xql = LOCAL_PATHS['scripts'] / 'buildEdiromTkAs.xql'
         sources_path_abs = Path(sources_path).resolve()
-        collection_path_abs = (LOCAL_PATHS['tmp'] / edition_slug).resolve()
+        collection_path_abs = (LOCAL_PATHS['tmp'] / sub_div).resolve() if sub_div else (LOCAL_PATHS['tmp']).resolve()
         
         # Write CNL XML to temp file instead of passing via command line to avoid arg length limit
         import tempfile
@@ -404,7 +372,7 @@ def build_critical_remarks(cnl_xml: str, sources_path: str, edition_slug: str, v
                 f'-b cnListFile={tmp_cnl_file}',
                 f'-b collectionPath={collection_path_abs}',
                 f'-b sourcesPath={sources_path_abs}',
-                f'-b editionHandle={edition_slug}',
+                f'-b subDiv={sub_div}',
                 f'-b volumeName={vol_slug}',
                 str(build_tk_as_xql)
             ], capture_output=True, text=True, check=True)
@@ -420,20 +388,20 @@ def build_critical_remarks(cnl_xml: str, sources_path: str, edition_slug: str, v
         print(f"    |   |   [FAIL] [E3] buildEdiromTkAs.xql failed: {e.stderr}", file=sys.stderr)
         return None
 
-def _get_cnl_id(first_level_work: etree._Element, expression_id: str) -> list:
+def _get_rel_by_id(first_level_work: etree._Element, expression_id: str, type: str) -> list:
     """ Extract ALL cnl_ids from first_level_work's relationList """
-    cnl_ids = []
+    rel_ids = []
     rel_has_part = first_level_work.xpath(f'./mei:relationList/mei:relation[@rel="hasPart" and @target="#{expression_id}"]/@plist', namespaces=NAMESPACES)
-    
+
     for plist in rel_has_part:
         for id_item in plist.split():
             id_clean = id_item.lstrip('#')
-            if 'cnl' in id_clean:
-                cnl_ids.append(id_clean)
+            if type in id_clean:
+                rel_ids.append(id_clean)
     
-    return cnl_ids
+    return rel_ids
 
-def _get_cnl_xml(cnl_id: str, subdirectory: str = None) -> etree._Element:
+def _get_rel_xml(cnl_id: str, subdirectory: str = None, type: str = None) -> etree._Element:
     """ 
     Get cnList element from criticalRemarks by cnl_id.
     If subdirectory is provided, search in criticalRemarks/subdirectory/ first.
@@ -441,19 +409,22 @@ def _get_cnl_xml(cnl_id: str, subdirectory: str = None) -> etree._Element:
     try:
         cnl_file = None
         search_paths = []
-        
-        # If subdirectory is provided, search there first
-        if subdirectory:
-            subdir_path = LOCAL_PATHS['criticalRemarks'] / subdirectory
-            if subdir_path.exists():
-                search_paths.append(subdir_path)
-        
-        # Also search in root criticalRemarks directory
-        search_paths.append(LOCAL_PATHS['criticalRemarks'])
+
+        if type and type == 'cnl':
+            # If subdirectory is provided, search there first
+            if subdirectory:
+                subdir_path = LOCAL_PATHS['criticalRemarks'] / subdirectory
+                if subdir_path.exists():
+                    search_paths.append(subdir_path)
+            
+            # Also search in root criticalRemarks directory
+            search_paths.append(LOCAL_PATHS['criticalRemarks'])
+        elif type and type == 'srcs':
+            search_paths.append(LOCAL_PATHS['kbSources'])
         
         # Search for file in paths
         for search_path in search_paths:
-            cnl_file = get_related_file(cnl_id, search_path, '*.xml', 'by_id')
+            cnl_file = _get_rel_file(cnl_id, search_path, '*.xml', 'by_id')
             if cnl_file:
                 tree = etree.parse(search_path / cnl_file, parser=etree.XMLParser(resolve_entities=False))
                 root = tree.getroot()
@@ -461,11 +432,7 @@ def _get_cnl_xml(cnl_id: str, subdirectory: str = None) -> etree._Element:
                 if cnList:
                     return cnList[0]
         
-        # If we get here, file not found
-        if subdirectory:
-            print(f"    |   [WARN] [W9] No critical remarks found for cnl_id '{cnl_id}' in {LOCAL_PATHS['criticalRemarks']}/{subdirectory} or root", file=sys.stderr)
-        else:
-            print(f"    |   [WARN] [W9] No critical remarks found for cnl_id '{cnl_id}'", file=sys.stderr)
+        print(f"    |   [WARN] [W9] No critical remarks found for id '{cnl_id}'", file=sys.stderr)
         return None
         
     except Exception as e:
@@ -479,15 +446,15 @@ def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) 
     for first_level_work in first_level_works:
         # Get the main expression
         main_expression = first_level_work.xpath('./mei:expressionList/mei:expression', namespaces=NAMESPACES)[0]
-        edition_slug = main_expression.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0]
+        sub_div = main_expression.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if main_expression.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else None
         work_type = first_level_work.xpath('./@type', namespaces=NAMESPACES)[0]
         
-        print(f"    +-- Building works.xml for '{edition_slug}' ({work_type})")
+        print(f"    +-- Building works.xml for '{sub_div}' ({work_type})")
         
         # Build single work element with main expression
-        work_element = _build_work_element_with_components(first_level_work, edition_slug, work_type, edition_name, vol_slug)
+        work_element = _build_work_element_with_components(first_level_work, sub_div, work_type, edition_name, vol_slug)
         if work_element is None:
-            print(f"    |   [WARN] No work element created for {edition_slug}", file=sys.stderr)
+            print(f"    |   [WARN] No work element created for {sub_div}", file=sys.stderr)
             continue
         
         # Check if there are component expressions (e.g., full-score, short-score)
@@ -515,12 +482,12 @@ def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) 
                     for component_expr in component_expressions:
                         try:
                             component_expr_copy = deepcopy(component_expr)
-                            component_slug = component_expr_copy.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0] if component_expr_copy.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES) else "unknown"
+                            component_slug = component_expr_copy.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if component_expr_copy.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else "unknown"
                             component_expr_id = component_expr_copy.xpath('./@xml:id', namespaces=NAMESPACES)[0] if component_expr_copy.xpath('./@xml:id', namespaces=NAMESPACES) else None
                             
                             # Add notesStmt with critical remarks to component expression
                             if component_expr_id:
-                                cnl_ids = _get_cnl_id(first_level_work, component_expr_id)
+                                cnl_ids = _get_rel_by_id(first_level_work, component_expr_id, type='cnl')
                                 if cnl_ids:
                                     # Ensure component_expr_copy has notesStmt
                                     notes_stmts = component_expr_copy.xpath('./mei:notesStmt', namespaces=NAMESPACES)
@@ -534,9 +501,9 @@ def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) 
                                     
                                     # Process each CNL file and collect all inner annots
                                     for cnl_id in cnl_ids:
-                                        cnl_xml = _get_cnl_xml(cnl_id, subdirectory=component_slug)
+                                        cnl_xml = _get_rel_xml(cnl_id, subdirectory=component_slug, type='cnl')
                                         if cnl_xml is not None:
-                                            critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug, vol_slug)
+                                            critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], sub_div, vol_slug)
                                             if critical_remarks_str:
                                                 try:
                                                     parser = etree.XMLParser(remove_blank_text=True)
@@ -562,16 +529,16 @@ def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) 
                             component_list.append(component_expr_copy)
                             print(f"    |   [OK] Added component expression '{component_slug}' to componentList")
                         except Exception as e:
-                            component_slug = component_expr.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES)[0] if component_expr.xpath('./mei:identifier[@type="editionSlug"]/text()', namespaces=NAMESPACES) else "unknown"
+                            component_slug = component_expr.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if component_expr.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else "unknown"
                             print(f"    |   [WARN] Failed to add component expression '{component_slug}': {e}", file=sys.stderr)
             except Exception as e:
                 print(f"    |   [WARN] Failed to process component expressions: {e}", file=sys.stderr)
         
         # Assemble final works.xml with the single work element (containing main + components in componentList)
-        if _assemble_works_xml([work_element], edition_slug, edition_name):
+        if _assemble_works_xml([work_element], sub_div, edition_name, vol_slug):
             print(f"    |   [OK] works.xml created")
         else:
-            print(f"    |   [FAIL] Failed to assemble works.xml for {edition_slug}", file=sys.stderr)
+            print(f"    |   [FAIL] Failed to assemble works.xml for {sub_div}", file=sys.stderr)
             continue
     
     print(f"    [OK] Step 3 complete")
@@ -632,8 +599,8 @@ def _build_work_element_from_component(component_expr: etree._Element, component
         
         # Add critical remarks for component expression
         component_expr_id = component_expr.xpath('./@xml:id', namespaces=NAMESPACES)[0]
-        cnl_id = _get_cnl_id(first_level_work, component_expr_id)
-        cnl_xml = _get_cnl_xml(cnl_id, subdirectory=component_slug) if cnl_id else None
+        cnl_id = _get_rel_by_id(first_level_work, component_expr_id, type='cnl')
+        cnl_xml = _get_rel_xml(cnl_id, subdirectory=component_slug, type='cnl') if cnl_id else None
         
         notes_stmts = work_element.xpath('.//mei:notesStmt')
         if notes_stmts:
@@ -662,7 +629,7 @@ def _build_work_element_from_component(component_expr: etree._Element, component
         print(f"    |   |   [WARN] Failed to build work element for component: {e}", file=sys.stderr)
         return None
 
-def _build_work_element_with_components(first_level_work: etree._Element, edition_slug: str, work_type: str, edition_name: str, vol_slug: str) -> etree._Element:
+def _build_work_element_with_components(first_level_work: etree._Element, sub_div: str, work_type: str, edition_name: str, vol_slug: str) -> etree._Element:
     """ 
     Helper: Build a single work element with nested components if it's a collection.
     For collections: Creates a first-level work with a componentList containing second-level works.
@@ -770,13 +737,13 @@ def _build_work_element_with_components(first_level_work: etree._Element, editio
                 
                 # Add critical remarks to component notesStmt
                 second_level_work_expression_id = second_level_work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0] if second_level_work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES) else None
-                cnl_id = _get_cnl_id(first_level_work, second_level_work_expression_id) if second_level_work_expression_id else None
-                cnl_xml = _get_cnl_xml(cnl_id) if cnl_id else None
+                cnl_id = _get_rel_by_id(first_level_work, second_level_work_expression_id, type='cnl') if second_level_work_expression_id else None
+                cnl_xml = _get_rel_xml(cnl_id, type='cnl') if cnl_id else None
                 
                 component_notes_stmts = component_element.xpath('.//mei:notesStmt', namespaces=NAMESPACES)
                 if component_notes_stmts:
                     if cnl_xml is not None:
-                        critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug, vol_slug)
+                        critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], sub_div, vol_slug)
                         if critical_remarks_str:
                             try:
                                 # Parse with proper namespace handling
@@ -804,13 +771,13 @@ def _build_work_element_with_components(first_level_work: etree._Element, editio
         else:  # singleton work
             # For singletons, add critical remarks directly to the first-level work
             expression_id = first_level_work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0] if first_level_work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES) else None
-            cnl_id = _get_cnl_id(first_level_work, expression_id) if expression_id else None
-            cnl_xml = _get_cnl_xml(cnl_id) if cnl_id else None
+            cnl_id = _get_rel_by_id(first_level_work, expression_id, type='cnl') if expression_id else None
+            cnl_xml = _get_rel_xml(cnl_id, type='cnl') if cnl_id else None
             
             notes_stmts = work_element.xpath('.//mei:notesStmt', namespaces=NAMESPACES)
             if notes_stmts:
                 if cnl_xml is not None:
-                    critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], edition_slug, vol_slug)
+                    critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], sub_div, vol_slug)
                     if critical_remarks_str:
                         try:
                             # Parse with proper namespace handling
@@ -850,7 +817,7 @@ def _get_termlists() -> list:
         print(f"    |   [FAIL] Failed to parse termList template: {e}", file=sys.stderr)
         return []
 
-def _assemble_works_xml(work_elements: list, edition_slug: str, edition_name: str) -> bool:
+def _assemble_works_xml(work_elements: list, sub_div: str, edition_name: str, vol_slug: str) -> bool:
     """ Helper: Assemble final works.xml with work elements """
     try:
         edirom_works_template = (LOCAL_PATHS['templates'] / 'template_edirom-works.xml').resolve()
@@ -888,9 +855,12 @@ def _assemble_works_xml(work_elements: list, edition_slug: str, edition_name: st
         remove_blank_text(root)
         
         # Save file with proper formatting
-        tmp_path = LOCAL_PATHS['_edirom'] / edition_slug
+        if sub_div:
+            tmp_path = LOCAL_PATHS['_edirom'] / sub_div
+        else:
+            tmp_path = LOCAL_PATHS['_edirom']
         tmp_path.mkdir(parents=True, exist_ok=True)
-        works_xml_path = tmp_path / f"{edition_slug}_works.xml"
+        works_xml_path = tmp_path / f"{sub_div}_works.xml" if sub_div else tmp_path / f"works.xml"
         
         # Format XML with proper pretty-printing
         xml_str = etree.tostring(root, encoding='unicode', pretty_print=True)

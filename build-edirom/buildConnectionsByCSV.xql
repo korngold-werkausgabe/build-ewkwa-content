@@ -10,7 +10,7 @@ declare namespace map = "http://www.w3.org/2005/xpath-functions/map";
 declare variable $propertiesPath as xs:string external;
 declare variable $csvPathsString as xs:string external;
 declare variable $sourcesPath as xs:string external;
-declare variable $editionSlug as xs:string external;
+declare variable $subDiv as xs:string external;
 declare variable $volSlug as xs:string external;
 declare variable $subGroups as xs:string external;
 declare variable $groupsTitleDe as xs:string external;
@@ -89,7 +89,11 @@ let $sources := try {
   ()
 }
 
-let $editionBaseURI := 'xmldb:exist:///db/apps/edirom-content/' || $volSlug || '/' || $editionSlug || '/sources/'
+let $editionBaseURI := 
+  if ($subDiv and $subDiv != "" and $subDiv != "None") then
+    'xmldb:exist:///db/apps/edirom-content/' || $volSlug || '/' || $subDiv || '/sources/'
+  else
+    'xmldb:exist:///db/apps/edirom-content/' || $volSlug || '/sources/'
 
 (: ####################################### :)
 return

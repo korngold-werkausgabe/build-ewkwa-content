@@ -1,15 +1,3 @@
-(:~ 
-  : This script provides the functions that build or update edirom annots
-  :
-  : @author Silke Reich
-  : @version 0.1
-:)
-
-(: TODOs:
-    - Musikalische Symbole anzeigen => Problem auf Seiten der Edirom-Programmierung
-    - Scan-Ausschnitte anzeigen => checken, wenn dev-Ansicht funktioniert
-:)
-
 xquery version "3.1";
 
 declare namespace edirom = "http://www.edirom.de/ns/1.3";
@@ -21,21 +9,27 @@ declare namespace util = "http://exist-db.org/xquery/util";
 declare namespace map = "http://www.w3.org/2005/xpath-functions/map";
 declare namespace math = "http://www.w3.org/2005/xpath-functions/math";
 
-(: External variables - can be passed from the command line with -b option :)
 declare variable $cnList as xs:string? external := "";
 declare variable $cnListFile as xs:string? external := "";
 declare variable $collectionPath as xs:string external;
 declare variable $sourcesPath as xs:string external;
-declare variable $editionHandle as xs:string external;
+declare variable $subDiv as xs:string external;
 declare variable $volumeName as xs:string external;
+
+(: --- Hilfsfunktion für Pfadbau --- :)
+declare function local:composePath($volume as xs:string, $subDiv as xs:string?, $rest as xs:string) as xs:string {
+  if ($subDiv and $subDiv != "" and $subDiv != "None")
+  then "xmldb:exist:///db/apps/edirom-content/" || $volume || "/" || $subDiv || "/" || $rest
+  else "xmldb:exist:///db/apps/edirom-content/" || $volume || "/" || $rest
+};
 
 declare function local:normalize-text-nodes($node as node()) as node() {
   typeswitch($node)
-    case text() 
-      return 
-        if (normalize-space($node) = '') then 
-          $node 
-        else 
+    case text()
+      return
+        if (normalize-space($node) = '') then
+          $node
+        else
           text { normalize-space($node) }
     case element() return element { node-name($node) } {
       $node/@*,
@@ -49,15 +43,10 @@ declare function local:textRendition($node as node()?) as xs:string {
   $node/normalize-space()
 };
 
-declare function local:buildSiglum($node as node()?, $sources as node()*, $editionHandle as xs:string, $volumeName as xs:string) as xs:string {
+declare function local:buildSiglum($node as node()?, $sources as node()*, $subDiv as xs:string, $volumeName as xs:string) as xs:string {
   $node/@siglum/normalize-space()
 };
 
-(:~
-: Building a string from multiple measures or measure sequences that are children from measures.
-: @param $measures Node that contains one or more measures or sequences of measures.
-: @return Measures as string.
-:)
 declare function local:buildMeasures($measures as node()?) as xs:string {
   let $measures-string := for $node in $measures/*
   return
@@ -75,11 +64,6 @@ declare function local:buildMeasures($measures as node()?) as xs:string {
     concat('T. ', string-join($measures-string, ', '))
 };
 
-(:~
-: Extracts the pitch name and octave pitch elements .
-: @param $pitch Pitch node.
-: @return Pitch name and octave.
-:)
 declare function local:buildPitch($pitch as node()*) as xs:string {
   let $pname := if (xs:int($pitch/@oct/normalize-space()) <= 2)
   then
@@ -103,12 +87,6 @@ declare function local:buildPitch($pitch as node()*) as xs:string {
     concat($pname, if ($oct) then concat('', $oct) else '')
 };
 
-
-(:~
-: Extracts the pitch name and octave within chords and returns them according to the EWK-WA guidelines.
-: @param $chord Chord node.
-: @return Pitch names and octaves for all pitches within the chord seperated by slashes.
-:)
 declare function local:buildChord($chord as node()*) as xs:string {
   string-join(
     for $pitch in $chord/pitch
@@ -118,11 +96,6 @@ declare function local:buildChord($chord as node()*) as xs:string {
   )
 };
 
-(:~
-: Extracts the pitch name and octave within sequences and returns them according to the EWK-WA guidelines.
-: @param $sequences Sequence node.
-: @return Pitch names and octaves for all pitches within the chord seperated by dashes.
-:)
 declare function local:buildSequence($sequence as node()*) as xs:string {
   string-join(
     for $pitch in $sequence/pitch
@@ -132,26 +105,12 @@ declare function local:buildSequence($sequence as node()*) as xs:string {
   )
 };
 
-(:~
-: Transforms the musicalSymbal URL to a TEI graphic.
-: @param $symbol Smufl png URL.
-: @return TEI graphic element for smufl.
-:)
 declare function local:buildSmufl($symbol as xs:string) as xs:string {
   ''
 };
 
-(:~
-: Builds noteText content with proper spacing before siglum elements.
-: @param $nodes Sequence of nodes from noteText.
-: @param $sources Source documents.
-: @param $editionHandle Edition handle.
-: @param $volumeName Volume name.
-: @param $pos Current position in recursion.
-: @return Content with proper spacing.
-:)
-declare function local:buildNoteTextContent($nodes as node()*, $sources as node()*, $editionHandle as xs:string, $volumeName as xs:string, $pos as xs:integer) as xs:string {
-  let $result := 
+declare function local:buildNoteTextContent($nodes as node()*, $sources as node()*, $subDiv as xs:string, $volumeName as xs:string, $pos as xs:integer) as xs:string {
+  let $result :=
     for $node at $index in $nodes[position() >= $pos]
     return
       if ($node/self::element()) then
@@ -159,7 +118,7 @@ declare function local:buildNoteTextContent($nodes as node()*, $sources as node(
           case 'measures'
             return local:buildMeasures($node)
           case 'siglum'
-            return local:buildSiglum($node, $sources, $editionHandle, $volumeName)
+            return local:buildSiglum($node, $sources, $subDiv, $volumeName)
           case 'pitch'
             return local:buildPitch($node)
           case 'chord'
@@ -173,7 +132,6 @@ declare function local:buildNoteTextContent($nodes as node()*, $sources as node(
           default
             return ''
       else
-        (: Text node :)
         let $nextNode := $nodes[$pos + $index]
         let $isNextElement := $nextNode/name() != ''
         return
@@ -185,13 +143,6 @@ declare function local:buildNoteTextContent($nodes as node()*, $sources as node(
     string-join($result, '')
 };
 
-(:~
-: ###
-: @param $measure-string ###.
-: @param $siglum ###.
-: @param $mdiv ###.
-: @return ###
-:)
 declare function local:convertToMeasuresElement($measure-string as xs:string*, $siglum as xs:string*, $mdiv as xs:string*) as node()* {
   if (contains($measure-string, ',')) then
     (
@@ -231,20 +182,14 @@ declare function local:convertToMeasuresElement($measure-string as xs:string*, $
     )
 };
 
-(:~
-: ###
-: @param $sources ###
-: @param $measures ###
-: @return ###
-:)
-declare function local:populatePlist($sources as node()*, $measures as node(), $editionHandle as xs:string*) as xs:string {
+declare function local:populatePlist($sources as node()*, $measures as node(), $subDiv as xs:string*) as xs:string {
   string-join(
     for $sub-node in $measures/*
     return
       switch ($sub-node/name())
         case 'measure'
           return
-            local:measureUri($sources, $sub-node, $editionHandle)
+            local:measureUri($sources, $sub-node, $subDiv)
         case 'sequence'
           return
             string-join(for $m in (xs:integer($sub-node/@label-from/string()) to xs:integer($sub-node/@label-to/string()))
@@ -252,7 +197,7 @@ declare function local:populatePlist($sources as node()*, $measures as node(), $
               local:measureUri($sources, <measure
                 siglum="{$sub-node/@siglum/string()}"
                 mdiv="{$sub-node/@mdiv/string()}"
-                label="{$m}"/>, $editionHandle), ' ')
+                label="{$m}"/>, $subDiv), ' ')
         default
           return
             '',
@@ -260,15 +205,9 @@ declare function local:populatePlist($sources as node()*, $measures as node(), $
   )
 };
 
-(:~
-: ###
-: @param $sources ###
-: @param $measure ###
-: @return ###
-:)
-declare function local:measureUri($sources as node()*, $measure as node()*, $editionHandle as xs:string*) as xs:string {
+declare function local:measureUri($sources as node()*, $measure as node()*, $subDiv as xs:string*) as xs:string {
   try {
-    let $url := "xmldb:exist:///db/apps/edirom-content/" || $editionHandle || "/sources/"
+    let $url := local:composePath($volumeName, $subDiv, "sources/")
     let $sourceDoc := ($sources//mei:mei[.//mei:identifier[text() = string($measure/@siglum)]][1], ())[1]
     return
       if (not($sourceDoc)) then
@@ -316,9 +255,8 @@ declare function local:generate-uuid() as xs:string {
 };
 
 (: Paths and input documents :)
-(: Adjust the collection Path to your local repository path :)
 
-let $cnListNode := 
+let $cnListNode :=
   if ($cnListFile != "") then
     doc($cnListFile)
   else
@@ -329,15 +267,13 @@ let $plist := map:merge(for $note in $cnListNode//criticalNote
 return
   map:entry($note/@xml:id/string(), string-join(for $measure in $note/noteText//measure
   return
-    local:measureUri($sources, $measure, $editionHandle), ' '))
+    local:measureUri($sources, $measure, $subDiv), ' '))
 )
-(:plist="{concat(local:populatePlist($sources, $note/measures/text()), ' ', map:get($plist, $note/@xml:id/string()))}":)
-(: Build annots - return only inner annot elements without wrapper :)
+
 let $criticalNotes :=
   for $note in $cnListNode//*:criticalNote
-    let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $cnListNode/*:kb/@mainSource/string(), $cnListNode/*:kb/@n/string()), $editionHandle)
-    (:      let $mainSourcePlist := "TEST":)
-    let $titleText := 
+    let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $cnListNode/*:kb/@mainSource/string(), $cnListNode/*:kb/@n/string()), $subDiv)
+    let $titleText :=
       string-join(
         (
           if ($note/*:measures[normalize-space()]) then concat('T. ', $note/*:measures/normalize-space()) else (),
@@ -357,7 +293,7 @@ let $criticalNotes :=
           lang="de">{$titleText}</title>
         <p
           lang="de">{
-            local:buildNoteTextContent($note/*:noteText/node(), $sources, $editionHandle, $volumeName, 1)
+            local:buildNoteTextContent($note/*:noteText/node(), $sources, $subDiv, $volumeName, 1)
         }</p>
       <ptr
         type="priority"
