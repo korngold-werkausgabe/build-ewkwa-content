@@ -89,26 +89,26 @@ def get_concordances(work: etree._Element) -> str:
     return json.dumps(results) if results else None
 
 def _get_rel_file(search_string, path, file_type, search_type: str) -> str:
-    """ Helper function to find related files (nav, cnl, etc.) based on file name or ID """
+    """ Helper function to find related files (nav, cnl, etc.) based on file name or ID. Searches recursively in subdirectories. """
     result = None
     if search_type == 'by_id':
         parser = etree.XMLParser(resolve_entities=False)
-        for file in path.glob(file_type):
+        for file in path.rglob(file_type):
             tree = etree.parse(file, parser)
             root = tree.getroot()
             # Check root element first
             root_id = root.xpath('./@xml:id', namespaces=NAMESPACES)
             if root_id and root_id[0] == search_string:
-                return file.name  # ← Return filename, not Element
+                return str(file.relative_to(path))  # ← Return relative path from base path
             else:
                 nav = root.xpath('//*[@xml:id=$search_string]', namespaces=NAMESPACES, search_string=search_string)
                 if nav:
-                    return file.name  # ← Return filename, not Element
+                    return str(file.relative_to(path))  # ← Return relative path from base path
         return None
     elif search_type == 'by_filename':
-        for file in path.glob(file_type):
+        for file in path.rglob(file_type):
             if search_string in file.name:
-                result = file.name
+                result = str(file.relative_to(path))  # ← Return relative path from base path
     if result:
         return result
     else:
@@ -307,12 +307,13 @@ def prepare_sources(first_level_works: list) -> bool:
         for kb_sources_id in kb_sources_ids:
             listSources = _get_rel_xml(kb_sources_id, type='srcs')
             
-        if listSources is None:
-            print(f"    |   [WARN] [W7] No kb_sources file found for '{kb_sources_id}' in {LOCAL_PATHS['kbSources']}", file=sys.stderr)
-            continue
+            if listSources is None:
+                print(f"    |   [WARN] [W7] No file found for '{kb_sources_id}' in {LOCAL_PATHS['kbSources']}", file=sys.stderr)
+                continue
         
         for source in listSources.xpath('//source', namespaces=NAMESPACES):
-            source_file_id = source.xpath('./@target', namespaces=NAMESPACES)[0] if source.xpath('./@target', namespaces=NAMESPACES) else source.xpath('./@xml:id', namespaces=NAMESPACES)[0]
+            source_file_id = source.xpath('./@targets', namespaces=NAMESPACES)[0] if source.xpath('./@targets', namespaces=NAMESPACES) else source.xpath('./@xml:id', namespaces=NAMESPACES)[0]
+            source_file_id = source_file_id.lstrip('#')  # Remove leading '#' if present
             source_title = source.xpath('./shortTitle/text()', namespaces=NAMESPACES)[0] if source.xpath('./shortTitle/text()', namespaces=NAMESPACES) else "No title found"
             source_siglum = source.xpath('./siglum/text()', namespaces=NAMESPACES)[0] if source.xpath('./siglum/text()', namespaces=NAMESPACES) else "Siglum not found"
             source_file = _get_rel_file(source_file_id, LOCAL_PATHS['sources'], '*.xml', 'by_id')
@@ -446,7 +447,7 @@ def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) 
     for first_level_work in first_level_works:
         # Get the main expression
         main_expression = first_level_work.xpath('./mei:expressionList/mei:expression', namespaces=NAMESPACES)[0]
-        sub_div = main_expression.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if main_expression.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else None
+        sub_div = main_expression.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if main_expression.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else ''
         work_type = first_level_work.xpath('./@type', namespaces=NAMESPACES)[0]
         
         print(f"    +-- Building works.xml for '{sub_div}' ({work_type})")
