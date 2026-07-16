@@ -37,15 +37,15 @@
     </xsl:template>
     
     <xsl:template match="navigatorCategory">
-        <xsl:variable name="catPos" select="count(preceding-sibling::navigatorCategory) + 1"/>
+        <xsl:variable name="genId" select="generate-id()"/>
         <navigatorCategory>
             <xsl:attribute name="xml:id">
             <xsl:choose>
                 <xsl:when test="$subDiv and $subDiv != '' and $subDiv != 'None'">
-                    <xsl:value-of select="concat($subDiv, '_cat_', $catPos)"/>
+                    <xsl:value-of select="concat($subDiv, '_', $genId)"/>
                 </xsl:when>
                 <xsl:otherwise>
-                    <xsl:value-of select="concat('cat_', $catPos)"/>
+                    <xsl:value-of select="$genId"/>
                 </xsl:otherwise>
             </xsl:choose>
             </xsl:attribute>
@@ -54,16 +54,16 @@
     </xsl:template>
     
     <xsl:template match="navigatorItem">
-        <xsl:variable name="catPos" select="count(ancestor::navigatorCategory/preceding-sibling::navigatorCategory) + 1"/>
         <xsl:variable name="itemPos" select="count(preceding-sibling::navigatorItem) + 1"/>
+        <xsl:variable name="parentCatId" select="ancestor::navigatorCategory[1]/@xml:id"/>
         <navigatorItem>
             <xsl:attribute name="xml:id">
             <xsl:choose>
                 <xsl:when test="$subDiv and $subDiv != '' and $subDiv != 'None'">
-                    <xsl:value-of select="concat($subDiv, '_item_', $catPos, '_', $itemPos)"/>
+                    <xsl:value-of select="concat($subDiv, '_item_', generate-id())"/>
                 </xsl:when>
                 <xsl:otherwise>
-                    <xsl:value-of select="concat('item_', $catPos, '_', $itemPos)"/>
+                    <xsl:value-of select="concat('item_', generate-id())"/>
                 </xsl:otherwise>
             </xsl:choose>
             </xsl:attribute>
@@ -74,7 +74,7 @@
                 <xsl:text>/</xsl:text>  
                 <xsl:choose>
                     <xsl:when test="$subDiv and $subDiv != '' and $subDiv != 'None'">
-                        <xsl:value-of select="concat($subDiv, '_cat_', $catPos)"/>
+                        <xsl:value-of select="$parentCatId"/>
                     </xsl:when>
                     <xsl:otherwise/>
                 </xsl:choose>
