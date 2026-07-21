@@ -213,7 +213,7 @@ declare function local:measureUri($sources as node()*, $measure as node()*, $sub
       if (not($sourceDoc)) then
         xs:string('')
       else
-        let $base := xs:string(replace(base-uri($sourceDoc), '^(.*/)(.*?)\.\w+$', '$2'))
+        let $base := xs:string(replace(base-uri($sourceDoc), '^(.*/)(.*?\.\w+)$', '$2'))
         let $mdiv-name := xs:string($measure/@mdiv)
         let $label-name := xs:string($measure/@label)
         let $found-measure := ($sourceDoc//mei:mdiv[@n = $mdiv-name]//mei:measure[@n = $label-name], ())[1]
@@ -285,22 +285,16 @@ let $criticalNotes :=
     return
       <annot
         xmlns="http://www.music-encoding.org/ns/mei"
-        type="editorialComment"
         xml:id="{$note/@xml:id}"
+        type="editorialComment"
+        class="#ediromAnnotPrio1 {concat('#', string-join($note/*:categories/@values/data(), ' '))}"
         plist="{string-join(for $item in ($mainSourcePlist, map:get($plist, $note/@xml:id/string())) return if ($item) then string($item) else (), ' ')}"
       >
         <title
           lang="de">{$titleText}</title>
-        <p
-          lang="de">{
+        <p>{
             local:buildNoteTextContent($note/*:noteText/node(), $sources, $subDiv, $volumeName, 1)
         }</p>
-      <ptr
-        type="priority"
-        target="#criticalRemark"/>
-      <ptr
-        type="categories"
-        target="{string-join($note/*:categories/@values/data(), ' ')}"/>
     </annot>
 
 return
