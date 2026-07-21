@@ -550,11 +550,6 @@ def _build_work_element_from_component(component_expr: etree._Element, component
     Helper: Build a work element from a component expression (e.g., full-score, short-score).
     Component expressions are sub-expressions in a componentList, each with their own CNL files in subdirectories.
     """
-    termList_elements = _get_termlists()
-    
-    if not termList_elements:
-        print(f"    |   |   [WARN] No termList elements found - expressions won't have classifications", file=sys.stderr)
-        return None
     
     work_template_path = (LOCAL_PATHS['templates'] / 'template_work.xml').resolve()
     
@@ -577,7 +572,7 @@ def _build_work_element_from_component(component_expr: etree._Element, component
         if title_elems:
             title_elems[0].text = component_title
         
-        # Add termLists to expression
+        # Set title for component expression
         expression_list = work_element.xpath('./mei:expressionList', namespaces=NAMESPACES)
         expression = expression_list[0].xpath('./mei:expression', namespaces=NAMESPACES) if expression_list else []
         if expression:
@@ -585,18 +580,6 @@ def _build_work_element_from_component(component_expr: etree._Element, component
             expr_title = expression[0].xpath('./mei:title', namespaces=NAMESPACES)
             if expr_title:
                 expression[0].remove(expr_title[0])
-            
-            # Replace classification element with termLists
-            classification = expression[0].xpath('./mei:classification', namespaces=NAMESPACES)
-            if classification:
-                expression[0].remove(classification[0])
-                if termList_elements:
-                    for termList in termList_elements:
-                        try:
-                            expression[0].append(deepcopy(termList))
-                        except Exception as tl_e:
-                            print(f"    |   |   [WARN] [W15] Failed to append termList: {tl_e}", file=sys.stderr)
-                            continue
         
         # Add critical remarks for component expression
         component_expr_id = component_expr.xpath('./@xml:id', namespaces=NAMESPACES)[0]
@@ -636,11 +619,6 @@ def _build_work_element_with_components(first_level_work: etree._Element, sub_di
     For collections: Creates a first-level work with a componentList containing second-level works.
     For singletons: Creates a single work element.
     """
-    termList_elements = _get_termlists()
-    
-    if not termList_elements:
-        print(f"    |   [WARN] No termList elements found - expressions won't have classifications", file=sys.stderr)
-        return None
     
     work_template_path = (LOCAL_PATHS['templates'] / 'template_work.xml').resolve()
     
@@ -690,21 +668,6 @@ def _build_work_element_with_components(first_level_work: etree._Element, sub_di
                     if expr_title_source:
                         title_elem.text = expr_title_source[0]
                     expression[0].insert(0, title_elem)
-            
-            # Replace classification element with termLists
-            classification = expression[0].xpath('./mei:classification', namespaces=NAMESPACES)
-            if classification:
-                expression[0].remove(classification[0])
-                # Add termLists after title
-                if termList_elements:
-                    insert_index = 1 if expr_title_elems else 0
-                    for i, termList in enumerate(termList_elements):
-                        try:
-                            expression[0].insert(insert_index + i, deepcopy(termList))
-                            print(f"    |   [OK] Added termList to expression")
-                        except Exception as tl_e:
-                            print(f"    |   [WARN] [W15] Failed to append termList: {tl_e}", file=sys.stderr)
-                            continue
         
         # For collections: Add componentList with second-level works
         if work_type == 'collection':
@@ -802,21 +765,6 @@ def _build_work_element_with_components(first_level_work: etree._Element, sub_di
     except Exception as e:
         print(f"    |   [WARN] Failed to build work element: {e}", file=sys.stderr)
         return None
-
-def _get_termlists() -> list:
-    """ Helper: Get termList elements from template """
-    try:
-        termList_template_path = (LOCAL_PATHS['templates'] / 'template_termList.xml').resolve()
-        tree = etree.parse(termList_template_path)
-        root = tree.getroot()
-        # termList elements have no namespace (not in MEI namespace)
-        termList_elements = root.xpath('.//termList')
-        if not termList_elements:
-            print(f"    |   [WARN] No termList elements found in template", file=sys.stderr)
-        return termList_elements
-    except Exception as e:
-        print(f"    |   [FAIL] Failed to parse termList template: {e}", file=sys.stderr)
-        return []
 
 def _assemble_works_xml(work_elements: list, sub_div: str, edition_name: str, vol_slug: str) -> bool:
     """ Helper: Assemble final works.xml with work elements """

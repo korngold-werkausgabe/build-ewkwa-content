@@ -10,7 +10,62 @@
             </editionStmt>
             <pubStmt />
         </fileDesc>
-        <encodingDesc />
+        <encodingDesc>
+            <classDecls>
+               <taxonomy>
+                   <category xml:id="ediromPriority"/>
+                   <category xml:id="ediromCategory"/>
+                   <taxonomy>
+                       <category class="#ediromCategory" xml:id="annotation.category.musical-text">
+                           <label xml:lang="de">Notentext</label>
+                           <label xml:lang="en">musical text</label>
+                       </category>
+                       <category class="#ediromCategory" xml:id="annotation.category.dynamics">
+                           <label xml:lang="de">Dynamik</label>
+                           <label xml:lang="en">dynamics</label>
+                       </category>
+                       <category class="#ediromCategory" xml:id="annotation.category.correction">
+                           <label xml:lang="de">Korrektur</label>
+                           <label xml:lang="en">correction</label>
+                       </category>
+                       <category class="#ediromCategory" xml:id="annotation.category.articulation">
+                           <label xml:lang="de">Spielanweisung &amp; Artikulation</label>
+                           <label xml:lang="en">articulation</label>
+                       </category>
+                       <category class="#ediromCategory" xml:id="annotation.category.text">
+                           <label xml:lang="de">Text</label>
+                           <label xml:lang="en">text</label>
+                       </category>
+                       <category class="#ediromCategory" xml:id="annotation.category.harmony">
+                           <label xml:lang="de">Tonsatz</label>
+                           <label xml:lang="en">harmony</label>
+                       </category>
+                       <category class="#ediromCategory" xml:id="annotation.category.editorial-correction">
+                           <label xml:lang="de">Herausgeberkorrektur</label>
+                           <label xml:lang="en">editorial correction</label>
+                       </category>
+                       <category class="#ediromCategory" xml:id="annotation.category.layout">
+                           <label xml:lang="de">Layout</label>
+                           <label xml:lang="en">layout</label>
+                       </category>
+                       <category class="#ediromCategory" xml:id="annotation.category.rhythm">
+                           <label xml:lang="de">Rhythmus</label>
+                           <label xml:lang="en">rhythm</label>
+                       </category>
+                   </taxonomy>
+                   <taxonomy>
+                       <category class="#ediromPriority" xml:id="ediromAnnotPrio1">
+                           <label xml:lang="de">Textkritische Anmerkung</label>
+                           <label xml:lang="en">Critical Remark</label>
+                       </category>
+                       <category class="#ediromPriority" xml:id="ediromAnnotPrio2">
+                           <label xml:lang="de">Lesart</label>
+                           <label xml:lang="en">Reading</label>
+                       </category>
+                   </taxonomy>
+               </taxonomy>
+            </classDecls>
+        </encodingDesc>
         <workList />
     </meiHead>
     <music />
