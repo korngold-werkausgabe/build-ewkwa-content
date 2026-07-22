@@ -293,12 +293,15 @@ def build_edirom_file(works: list, edition_name: str, vol_slug: str) -> bool:
         print(f"    |   |   [FAIL] [E1] buildEdiromFile.xsl failed: {e.stderr}", file=sys.stderr)
         return False
     
-def prepare_sources(first_level_works: list) -> bool:
+def prepare_sources(first_level_works: list, vol_slug: str) -> bool:
     """ Prepare source files for Edirom edition """
 
     print(f"+-- Step 2: Prepare Source Files")
+
     
     for work in first_level_works:
+        work_id = work.xpath('./@xml:id', namespaces=NAMESPACES)[0]
+        root = work.getroottree().getroot()
         sub_div = work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if work.xpath('./mei:expressionList/mei:expression/mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else None
         ex_id = work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0]
 
@@ -312,6 +315,7 @@ def prepare_sources(first_level_works: list) -> bool:
                 continue
         
         for source in listSources.xpath('//source', namespaces=NAMESPACES):
+            source_id = source.xpath('./@xml:id', namespaces=NAMESPACES)[0] if source.xpath('./@xml:id', namespaces=NAMESPACES) else None
             source_file_id = source.xpath('./@targets', namespaces=NAMESPACES)[0] if source.xpath('./@targets', namespaces=NAMESPACES) else source.xpath('./@xml:id', namespaces=NAMESPACES)[0]
             source_file_id = source_file_id.lstrip('#')  # Remove leading '#' if present
             source_title = source.xpath('./shortTitle/text()', namespaces=NAMESPACES)[0] if source.xpath('./shortTitle/text()', namespaces=NAMESPACES) else "No title found"
@@ -323,19 +327,59 @@ def prepare_sources(first_level_works: list) -> bool:
                 continue
             else: 
                 print(f"    |   +-- Preparing source file '{source_file}' for '{source_title}' ({source_siglum})")
-            
+
+            manifestation = None
+            item = None
+
+            # Add identifier to manifestation
+            identifier = etree.Element('{%s}identifier' % NAMESPACES['mei'])
+            identifier.set('type', 'siglum')
+            identifier.text = source_siglum
+
+            relList = etree.Element('{%s}relationList' % NAMESPACES['mei'])
+            rel = etree.Element('{%s}relation' % NAMESPACES['mei'])
+            rel.set('rel', 'isEmbodimentOf')
+            rel.set('target', f"xmldb:exist:///db/apps/edirom-content/{vol_slug}/{sub_div}/works.xml#{work_id}")
+            relList.append(rel)
+
+            # Get manifestation in frbr-tree
+            if root.xpath(f'.//mei:manifestation[@target="#{source_id}"]', namespaces=NAMESPACES):
+                manifestation = root.xpath(f'.//mei:manifestation[@target="#{source_id}"]', namespaces=NAMESPACES)[0] 
+                del manifestation.attrib['target']
+                manifestation.append(identifier)
+                manifestation.append(relList)
+            elif root.xpath(f'.//mei:item[@target="#{source_id}"]', namespaces=NAMESPACES):
+                    item = root.xpath(f'.//mei:item[@target="#{source_id}"]', namespaces=NAMESPACES)[0]
+                    del item.attrib['target']
+                    manifestation = item.xpath('ancestor::mei:manifestation[1]', namespaces=NAMESPACES)[0]
+                    manifestation.append(relList)
+                    item.append(identifier)
+            else:
+                print(f"    |   [WARN] [W10] No manifestation or item found for source '{source_id}'", file=sys.stderr)
+                continue
+
+                    
             try:
                 print(f"    +-- Step 2.2: Prepare and copy source file")
                 prepare_sources_xsl = LOCAL_PATHS['scripts'] / 'prepareSources.xsl'
                 source_file = (LOCAL_PATHS['sources'] / source_file).resolve()
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False, encoding='utf-8') as tmp_manifestation_file:
+                    manifestation_xml = etree.tostring(manifestation, encoding='unicode') if manifestation is not None else '<manifestation xmlns="http://www.music-encoding.org/ns/mei"/>'
+                    tmp_manifestation_file.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+                    tmp_manifestation_file.write(manifestation_xml)
+                    manifestation_file_uri = Path(tmp_manifestation_file.name).resolve().as_uri()
 
-                result = subprocess.run([
-                    'xsltproc',
-                    '--stringparam', 'title', source_title,
-                    '--stringparam', 'siglum', source_siglum,
-                    str(prepare_sources_xsl),
-                    str(source_file),
-                ], capture_output=True, text=True, check=True)
+                try:
+                    result = subprocess.run([
+                        'xsltproc',
+                        '--stringparam', 'title', source_title,
+                        '--stringparam', 'manifestationFile', manifestation_file_uri,
+                        str(prepare_sources_xsl),
+                        str(source_file),
+                    ], capture_output=True, text=True, check=True)
+                finally:
+                    Path(tmp_manifestation_file.name).unlink(missing_ok=True)
                 print(f"    |   |   [OK] prepareSources.xsl processed")
                 # Save - xsltproc already outputs formatted XML with declaration
                 # Use original filename instead of source_file_id
@@ -865,7 +909,7 @@ def main():
     print(f"\nFound {len(first_level_works)} work(s) to process\n")
 
     # Prepare sources
-    if prepare_sources(first_level_works):
+    if prepare_sources(first_level_works, vol_slug):
         print(f"  [OK] READY: Edition prepared for next steps\n")
     else:
         print(f"  [FAIL] FAILED: Edition skipped due to dependency errors\n")
