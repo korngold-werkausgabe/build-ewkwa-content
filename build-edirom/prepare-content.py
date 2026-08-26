@@ -487,24 +487,26 @@ def _get_rel_xml(cnl_id: str, subdirectory: str = None, type: str = None) -> etr
 def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) -> bool:
     """ Build works.xml file for each first-level work (one file per work, with possible multiple expressions) """
     print(f"+-- Step 3: Build Works Files")
-    
+
+    works_by_sub_div: dict[str, list] = {}
+
     for first_level_work in first_level_works:
         # Get the main expression
         main_expression = first_level_work.xpath('./mei:expressionList/mei:expression', namespaces=NAMESPACES)[0]
         sub_div = main_expression.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if main_expression.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else ''
         work_type = first_level_work.xpath('./@type', namespaces=NAMESPACES)[0]
-        
+
         print(f"    +-- Building works.xml for '{sub_div}' ({work_type})")
-        
+
         # Build single work element with main expression
         work_element = _build_work_element_with_components(first_level_work, sub_div, work_type, edition_name, vol_slug)
         if work_element is None:
             print(f"    |   [WARN] No work element created for {sub_div}", file=sys.stderr)
             continue
-        
+
         # Check if there are component expressions (e.g., full-score, short-score)
         component_expressions = get_component_expressions(main_expression)
-        
+
         if component_expressions:
             print(f"    |   [INFO] Found {len(component_expressions)} component expression(s)")
             # Add component expressions to a componentList within the main expression in the work element
@@ -513,7 +515,7 @@ def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) 
                 work_expressions = work_element.xpath('./mei:expressionList/mei:expression', namespaces=NAMESPACES)
                 if work_expressions:
                     main_expr_in_work = work_expressions[0]
-                    
+
                     # Check if componentList already exists, if not create it
                     component_lists = main_expr_in_work.xpath('./mei:componentList', namespaces=NAMESPACES)
                     if component_lists:
@@ -522,14 +524,14 @@ def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) 
                         # Create new componentList element
                         component_list = etree.Element('{%s}componentList' % NAMESPACES['mei'])
                         main_expr_in_work.append(component_list)
-                    
+
                     # Add component expressions to componentList with their critical remarks
                     for component_expr in component_expressions:
                         try:
                             component_expr_copy = deepcopy(component_expr)
                             component_slug = component_expr_copy.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES)[0] if component_expr_copy.xpath('./mei:identifier[@type="subDiv"]/text()', namespaces=NAMESPACES) else "unknown"
                             component_expr_id = component_expr_copy.xpath('./@xml:id', namespaces=NAMESPACES)[0] if component_expr_copy.xpath('./@xml:id', namespaces=NAMESPACES) else None
-                            
+
                             # Add notesStmt with critical remarks to component expression
                             if component_expr_id:
                                 cnl_ids = _get_rel_by_id(first_level_work, component_expr_id, type='cnl')
@@ -540,10 +542,10 @@ def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) 
                                         notes_stmt = etree.Element('{%s}notesStmt' % NAMESPACES['mei'])
                                         component_expr_copy.append(notes_stmt)
                                         notes_stmts = [notes_stmt]
-                                    
+
                                     # Create single criticalCommentary wrapper for all CNL files
                                     wrapper_annot = etree.Element('{%s}annot' % NAMESPACES['mei'], type='criticalCommentary')
-                                    
+
                                     # Process each CNL file and collect all inner annots
                                     for cnl_id in cnl_ids:
                                         cnl_xml = _get_rel_xml(cnl_id, subdirectory=component_slug, type='cnl')
@@ -566,11 +568,11 @@ def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) 
                                                 print(f"    |   [WARN] No critical remarks generated for CNL '{cnl_id}'", file=sys.stderr)
                                         else:
                                             print(f"    |   [WARN] No CNL XML found for '{cnl_id}'", file=sys.stderr)
-                                    
+
                                     # Add wrapper with all collected annots to notesStmt
                                     if len(wrapper_annot) > 0:
                                         notes_stmts[0].append(wrapper_annot)
-                            
+
                             component_list.append(component_expr_copy)
                             print(f"    |   [OK] Added component expression '{component_slug}' to componentList")
                         except Exception as e:
@@ -578,14 +580,16 @@ def build_works_file(first_level_works: list, edition_name: str, vol_slug: str) 
                             print(f"    |   [WARN] Failed to add component expression '{component_slug}': {e}", file=sys.stderr)
             except Exception as e:
                 print(f"    |   [WARN] Failed to process component expressions: {e}", file=sys.stderr)
-        
-        # Assemble final works.xml with the single work element (containing main + components in componentList)
-        if _assemble_works_xml([work_element], sub_div, edition_name, vol_slug):
+
+        works_by_sub_div.setdefault(sub_div, []).append(work_element)
+
+    for output_sub_div, collected_work_elements in works_by_sub_div.items():
+        print(f"    +-- Writing final works.xml for '{output_sub_div}' ({len(collected_work_elements)} work(s))")
+        if _assemble_works_xml(collected_work_elements, output_sub_div, edition_name, vol_slug):
             print(f"    |   [OK] works.xml created")
         else:
-            print(f"    |   [FAIL] Failed to assemble works.xml for {sub_div}", file=sys.stderr)
-            continue
-    
+            print(f"    |   [FAIL] Failed to assemble works.xml for {output_sub_div}", file=sys.stderr)
+
     print(f"    [OK] Step 3 complete")
     return True
 
