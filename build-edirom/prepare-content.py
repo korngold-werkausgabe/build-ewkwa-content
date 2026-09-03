@@ -784,29 +784,31 @@ def _build_work_element_with_components(first_level_work: etree._Element, sub_di
             # For singletons, add critical remarks directly to the first-level work
             expression_id = first_level_work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES)[0] if first_level_work.xpath('./mei:expressionList/mei:expression/@xml:id', namespaces=NAMESPACES) else None
             cnl_id = _get_rel_by_id(first_level_work, expression_id, type='cnl') if expression_id else None
-            cnl_xml = _get_rel_xml(cnl_id, type='cnl') if cnl_id else None
-            
-            notes_stmts = work_element.xpath('.//mei:notesStmt', namespaces=NAMESPACES)
-            if notes_stmts:
-                if cnl_xml is not None:
-                    critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], sub_div, vol_slug)
-                    if critical_remarks_str:
-                        try:
-                            # Parse with proper namespace handling
-                            parser = etree.XMLParser(remove_blank_text=True)
-                            cr_elem = etree.fromstring(critical_remarks_str.encode('utf-8'), parser)
-                            notes_stmts[0].append(cr_elem)
-                        except Exception as cr_e:
-                            print(f"    |   [WARN] Could not parse critical remarks: {cr_e}", file=sys.stderr)
+            for id in cnl_id:
+                cnl_xml = _get_rel_xml(id, type='cnl') if cnl_id else None
+                notes_stmts = work_element.xpath('.//mei:notesStmt', namespaces=NAMESPACES)
+                if notes_stmts:
+                    if cnl_xml is not None:
+                        critical_remarks_str = build_critical_remarks(etree.tostring(cnl_xml, encoding='unicode'), LOCAL_PATHS['sources'], sub_div, vol_slug)
+                        if critical_remarks_str:
+                            try:
+                                # Parse with proper namespace handling
+                                parser = etree.XMLParser(remove_blank_text=True)
+                                cr_elem = etree.fromstring(critical_remarks_str.encode('utf-8'), parser)
+                                cr_elem_list = cr_elem.findall('*')
+                                for elem in cr_elem_list:
+                                    notes_stmts[0].append(elem)
+                            except Exception as cr_e:
+                                print(f"    |   [WARN] Could not parse critical remarks: {cr_e}", file=sys.stderr)
+                                empty_annot = etree.Element('annot')
+                                notes_stmts[0].append(empty_annot)
+                        else:
                             empty_annot = etree.Element('annot')
                             notes_stmts[0].append(empty_annot)
                     else:
+                        print(f"    |   |   [WARN] [W14] No critical remarks file reference found for {work_id}", file=sys.stderr)
                         empty_annot = etree.Element('annot')
                         notes_stmts[0].append(empty_annot)
-                else:
-                    print(f"    |   |   [WARN] [W14] No critical remarks file reference found for {work_id}", file=sys.stderr)
-                    empty_annot = etree.Element('annot')
-                    notes_stmts[0].append(empty_annot)
         
         return work_element
         
