@@ -271,31 +271,33 @@ return
 )
 
 let $criticalNotes :=
-  for $note in $cnListNode//*:criticalNote
-    let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $cnListNode/*:kb/@mainSource/string(), $cnListNode/*:kb/@n/string()), $subDiv)
-    let $titleText :=
-      string-join(
-        (
-          if ($note/*:measures[normalize-space()]) then concat('T. ', $note/*:measures/normalize-space()) else (),
-          if ($note/*:staff[normalize-space()]) then $note/*:staff/normalize-space() else (),
-          if ($note/*:musicalEvent[normalize-space()]) then $note/*:musicalEvent/normalize-space() else ()
-        )[. != ''],
-        ' | '
-      )
-    return
-      <annot
-        xmlns="http://www.music-encoding.org/ns/mei"
-        xml:id="{$note/@xml:id}"
-        type="editorialComment"
-        class="#ediromAnnotPrio1 {concat('#', string-join($note/*:categories/@values/data(), ' '))}"
-        plist="{string-join(for $item in ($mainSourcePlist, map:get($plist, $note/@xml:id/string())) return if ($item) then string($item) else (), ' ')}"
-      >
-        <title
-          lang="de">{$titleText}</title>
-        <p>{
-            local:buildNoteTextContent($note/*:noteText/node(), $sources, $subDiv, $volumeName, 1)
-        }</p>
-    </annot>
+    <cnList> {
+        for $note in $cnListNode//*:criticalNote
+          let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $cnListNode/*:kb/@mainSource/string(), $cnListNode/*:kb/@n/string()), $subDiv)
+          let $titleText :=
+            string-join(
+              (
+                if ($note/*:measures[normalize-space()]) then concat('T. ', $note/*:measures/normalize-space()) else (),
+                if ($note/*:staff[normalize-space()]) then $note/*:staff/normalize-space() else (),
+                if ($note/*:musicalEvent[normalize-space()]) then $note/*:musicalEvent/normalize-space() else ()
+              )[. != ''],
+              ' | '
+            )
+          return
+            <annot
+              xmlns="http://www.music-encoding.org/ns/mei"
+              xml:id="{$note/@xml:id}"
+              type="editorialComment"
+              class="#ediromAnnotPrio1 {concat('#', string-join($note/*:categories/@values/data(), ' '))}"
+              plist="{string-join(for $item in ($mainSourcePlist, map:get($plist, $note/@xml:id/string())) return if ($item) then string($item) else (), ' ')}"
+            >
+              <title
+                xml:lang="de">{$titleText}</title>
+              <p>{
+                  local:buildNoteTextContent($note/*:noteText/node(), $sources, $subDiv, $volumeName, 1)
+              }</p>
+          </annot>}
+    </cnList>
 
 return
   $criticalNotes
