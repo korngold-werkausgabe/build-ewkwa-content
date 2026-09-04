@@ -23,40 +23,16 @@ declare function local:composePath($volume as xs:string, $subDiv as xs:string?, 
   else "xmldb:exist:///db/apps/edirom-content/" || $volume || "/" || $rest
 };
 
-declare function local:normalize-text-nodes($node as node()) as node() {
-  typeswitch($node)
-    case text()
-      return
-        if (normalize-space($node) = '') then
-          $node
-        else
-          text { normalize-space($node) }
-    case element() return element { node-name($node) } {
-      $node/@*,
-      for $child in $node/node()
-      return local:normalize-text-nodes($child)
-    }
-    default return $node
-};
-
-declare function local:textRendition($node as node()?) as xs:string {
-  $node/normalize-space()
-};
-
-declare function local:buildSiglum($node as node()?, $sources as node()*, $subDiv as xs:string, $volumeName as xs:string) as xs:string {
-  $node/@siglum/normalize-space()
-};
-
-declare function local:buildMeasures($measures as node()?) as xs:string {
+declare function local:measuresToString($measures as node()?) as xs:string {
   let $measures-string := for $node in $measures/*
   return
     switch ($node/name())
       case 'measure'
         return
-          $node/@label/string()
+          concat($node/@label/string(), ' ')
       case 'sequence'
         return
-          concat($node/@label-from/string(), '–', $node/@label-to/string())
+          concat($node/@label-from/string(), '–', $node/@label-to/string(), ' ')
       default
         return
           ''
@@ -64,7 +40,7 @@ declare function local:buildMeasures($measures as node()?) as xs:string {
     concat('T. ', string-join($measures-string, ', '))
 };
 
-declare function local:buildPitch($pitch as node()*) as xs:string {
+declare function local:pitchToString($pitch as node()*) as xs:string {
   let $pname := if (xs:int($pitch/@oct/normalize-space()) <= 2)
   then
     upper-case($pitch/@pname/normalize-space())
@@ -91,7 +67,7 @@ declare function local:buildChord($chord as node()*) as xs:string {
   string-join(
     for $pitch in $chord/pitch
     return
-      local:buildPitch($pitch),
+      local:pitchToString($pitch),
     '/'
   )
 };
@@ -100,7 +76,7 @@ declare function local:buildSequence($sequence as node()*) as xs:string {
   string-join(
     for $pitch in $sequence/pitch
     return
-      local:buildPitch($pitch),
+      local:pitchToString($pitch),
     '–'
   )
 };
@@ -116,11 +92,11 @@ declare function local:buildNoteTextContent($nodes as node()*, $sources as node(
       if ($node/self::element()) then
         switch ($node/name())
           case 'measures'
-            return local:buildMeasures($node)
+            return local:measuresToString($node)
           case 'siglum'
-            return local:buildSiglum($node, $sources, $subDiv, $volumeName)
+            return $node/@siglum/normalize-space()
           case 'pitch'
-            return local:buildPitch($node)
+            return local:pitchToString($node)
           case 'chord'
             return local:buildChord($node)
           case 'pitch-sequence'
@@ -128,7 +104,7 @@ declare function local:buildNoteTextContent($nodes as node()*, $sources as node(
           case 'musicalSymbol'
             return local:buildSmufl($node/@url/string())
           case 'rend'
-            return local:textRendition($node)
+            return $node/normalize-space()
           default
             return ''
       else
@@ -182,33 +158,11 @@ declare function local:convertToMeasuresElement($measure-string as xs:string*, $
     )
 };
 
-declare function local:populatePlist($sources as node()*, $measures as node(), $subDiv as xs:string*) as xs:string {
-  string-join(
-    for $sub-node in $measures/*
-    return
-      switch ($sub-node/name())
-        case 'measure'
-          return
-            local:measureUri($sources, $sub-node, $subDiv)
-        case 'sequence'
-          return
-            string-join(for $m in (xs:integer($sub-node/@label-from/string()) to xs:integer($sub-node/@label-to/string()))
-            return
-              local:measureUri($sources, <measure
-                siglum="{$sub-node/@siglum/string()}"
-                mdiv="{$sub-node/@mdiv/string()}"
-                label="{$m}"/>, $subDiv), ' ')
-        default
-          return
-            '',
-    ' '
-  )
-};
-
-declare function local:measureUri($sources as node()*, $measure as node()*, $subDiv as xs:string*) as xs:string {
+declare function local:measureUri($sources, $measure as node()*, $subDiv as xs:string*) as xs:string {
   try {
     let $url := local:composePath($volumeName, $subDiv, "sources/")
-    let $sourceDoc := ($sources//mei:mei[.//mei:identifier[text() = string($measure/@siglum)]][1], ())[1]
+    <!-- TODO: ID, die jetzt erfügbar ist -->
+    let $sourceDoc := ($sources//mei:mei[@xml:id = string($measure/@id)], ())[1]
     return
       if (not($sourceDoc)) then
         xs:string('')
@@ -228,30 +182,25 @@ declare function local:measureUri($sources as node()*, $measure as node()*, $sub
   }
 };
 
-declare function local:generate-uuid() as xs:string {
-  let $rng := fn:random-number-generator()
-  let $hex-chars := ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f')
-  let $random-hex := function ($length as xs:integer) {
-    string-join(for $i in 1 to $length
+declare function local:measuresStringToElement($measures as node(), $subDiv as xs:string*) as xs:string {
+  string-join(
+    for $sub-node in $measures/*
     return
-      $hex-chars[xs:integer($rng('next')()('number') * 16) + 1], '')
-  }
-  let $pad := function ($str as xs:string, $length as xs:integer) {
-    let $padding := string-join(for $i in 1 to ($length - string-length($str))
-    return
-      '0', '')
-    return
-      concat($padding, $str)
-  }
-  return
-    concat(
-    $pad($random-hex(8), 8), '-',
-    $pad($random-hex(4), 4), '-',
-    '4', $pad($random-hex(3), 3), '-',
-    ('8', '9', 'a', 'b')[xs:integer($rng('next')()('number') * 4) + 1],
-    $pad($random-hex(3), 3), '-',
-    $pad($random-hex(12), 12)
-    )
+      switch ($sub-node/name())
+        case 'measure'
+          return
+            local:measureUri($sources, $sub-node, $subDiv)
+        case 'sequence'
+            return
+              local:measureUri($sources, <measure
+                siglum="{$sub-node/@siglum/string()}"
+                mdiv="{$sub-node/@mdiv/string()}"
+                label="{$sub-node/@mlabel/string()}"/>, $subDiv), ' ')
+        default
+          return
+            '',
+    ' '
+  )
 };
 
 (: Paths and input documents :)
@@ -265,6 +214,8 @@ let $sources := collection($sourcesPath)
 
 let $plist := map:merge(for $note in $cnListNode//criticalNote
 return
+  let $measures := $note/noteText//measure
+  let $sequences := $note/noteText//sequence
   map:entry($note/@xml:id/string(), string-join(for $measure in $note/noteText//measure
   return
     local:measureUri($sources, $measure, $subDiv), ' '))
@@ -272,7 +223,7 @@ return
 
 let $criticalNotes :=
   for $note in $cnListNode//*:criticalNote
-    let $mainSourcePlist := local:populatePlist($sources, local:convertToMeasuresElement(fn:string($note/*:measures/text()), $cnListNode/*:kb/@mainSource/string(), $cnListNode/*:kb/@n/string()), $subDiv)
+    let $mainSourcePlist := local:measuresStringToElement(local:convertToMeasuresElement(fn:string($note/*:measures/text()), $cnListNode/*:kb/@mainSource/string(), $cnListNode/*:kb/@n/string()), $subDiv)
     let $titleText :=
       string-join(
         (
