@@ -21,6 +21,8 @@ def main():
         f.write(str(frbr_json))
 
     print(f"\n\t[OK] Found {len(frbr_json['work_list'])} work(s) to process\n")
+        
+    sources.prepare_sources(frbr_json['manifestation_list'])
 
 if __name__ == "__main__":
     main()
