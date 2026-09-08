@@ -2,6 +2,8 @@ import global_variables as vars
 from lxml import etree
 from typing import Optional, Union
 import sys
+from pathlib import Path
+
 
 """
 This module provides functions to parse and extract information from a FRBR tree
@@ -290,7 +292,7 @@ def _return_manifestation_xml_by_id(manifestation_id: str) -> etree._Element:
         return etree.Element("empty")
 
 
-def write_frbr_to_json(frbr_path: str) -> dict:
+def write_frbr_to_json(frbr_path: Path) -> dict:
     """
     Parses the FRBR XML file and converts it into a JSON-compatible dictionary.
 
@@ -316,6 +318,7 @@ def write_frbr_to_json(frbr_path: str) -> dict:
         frbr_map["edition_name"] = _first_text(root, '/mei:mei/mei:meiHead/mei:fileDesc/mei:titleStmt/mei:title[@type="volume"]/text()')
 
         top_level_works = root.xpath('/mei:mei/mei:meiHead/mei:workList/mei:work', namespaces=vars.NAMESPACES)
+
         frbr_map["work_list"] = _collect_works_in_order(top_level_works)
 
         frbr_map["manifestation_list"] = _collect_manifestations(root)
