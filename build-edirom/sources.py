@@ -32,18 +32,24 @@ def _generate_source_maps(manifestation_list: dict) -> list:
                 print(f"\t[WARN] No source IDs found for {item['id']} in frbr-tree.xml.")
             
             for source_id in source_ids:
-                if source_id == "":
-                    print(f"\t[WARN] Empty source ID found for {item['id']} in frbr-tree.xml.")
-                    continue
+                for source_id in source_ids:
+                    try:
+                        source_title, source_sigle, targets = _get_source_info(source_id)
+                        source_title, source_sigle, targets = _get_source_info(source_id)
+                        source_maps.append({
+                            'source_id': source_id,
+                            'source_title': source_title,
+                            'source_sigle': source_sigle,
+                            'manifestation_id': manifestation['id'],
+                            'targets': targets
+                        })
+                    except ValueError as e:
+                        print(f"\t[WARN] Invalid source metadata for '{source_id}': {e}. Skipping.")
+                        continue
+
+                    if not source_title:
+                        continue
                 
-                source_title, source_sigle, targets = _get_source_info(source_id)
-                source_maps.append({
-                    'source_id': source_id,
-                    'source_title': source_title,
-                    'source_sigle': source_sigle,
-                    'manifestation_id': manifestation['id'],
-                    'targets': targets
-                })
     
     return source_maps
 
@@ -51,11 +57,11 @@ def _get_source_info(source_id: str) -> tuple:
     source_xml = utils._get_xml_by_id(vars.LOCAL_PATHS['kbSources'], source_id)
     if source_xml is None:
         print(f"\t[WARN] Source ID \"{source_id}\" not found in kb_sources.xml.")
-        return '', []
-    
+        return '', '', []
+
     source_title = source_xml.xpath('./shortTitle/text()')[0] if source_xml.xpath('./shortTitle/text()') else ''
     source_sigle = source_xml.xpath('./siglum/text()')[0] if source_xml.xpath('./siglum/text()') else ''
-    tmp_targets = source_xml.xpath('./@targets')
+    tmp_targets = source_xml.xpath('./@targets') if source_xml.xpath('./@targets') else []
     if len(tmp_targets) < 1:
         targets = []
         print(f"\t[WARN] No targets found for {source_id} in kb_sources.xml.")
@@ -71,42 +77,48 @@ def prepare_sources(manifestation_list: dict) -> list:
         for target in entry['targets']:
             if target == "":
                 print(f"\t[WARN] Empty target found for source {entry['source_id']}.")
-            else:
-                print(f"\t[INFO] Processing target: {target}")
-                source_file = utils._get_file(vars.LOCAL_PATHS['sources'], target, search_type='by_id', return_full_path=True)
+                continue
 
-                if source_file == Path(''):
-                    print(f"\t[WARN] No source file found for target '{target}'.")
+            print(f"\t[INFO] Processing target: {target}")
+            source_file = utils._get_file(
+                vars.LOCAL_PATHS['sources'],
+                target,
+                search_type='by_id',
+                return_full_path=True
+            )
 
-                manifestation_element = etree.tostring(_return_manifestation_xml_by_id(entry['manifestation_id']), encoding='unicode')
-                # Temporäre Datei für das Manifestations-Element
+            if not source_file or source_file == Path('') or not source_file.exists():
+                print(f"\t[WARN] No source file found for target '{target}'. Skipping.")
+                continue
+
+            try:
+                manifestation_xml = _return_manifestation_xml_by_id(entry['manifestation_id'])
+                if manifestation_xml is None:
+                    print(f"\t[WARN] No manifestation found for {entry['manifestation_id']}. Skipping.")
+                    continue
+
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as tmp:
-                    tmp.write(etree.tostring(_return_manifestation_xml_by_id(entry['manifestation_id']), encoding='unicode', pretty_print=True))
+                    tmp.write(etree.tostring(manifestation_xml, encoding='unicode', pretty_print=True))
                     manifestation_file = tmp.name
 
+                result = subprocess.run([
+                    'xsltproc',
+                    '--stringparam', 'title', entry['source_title'],
+                    '--stringparam', 'sigle', entry['source_sigle'],
+                    '--param', 'manifestationFile', f"'file://{manifestation_file}'",
+                    str(vars.SCRIPTS['prepare_sources']),
+                    str(source_file),
+                ], capture_output=True, text=True, check=True)
 
+            except subprocess.CalledProcessError as e:
+                print(f"\t[ERROR] Source transformation failed: {e.stderr}")
+            except FileNotFoundError:
+                print(f"\t[WARN] xsltproc not found. Skipping.")
+            finally:
                 try:
-                    result = subprocess.run([
-                        'xsltproc',
-                        '--stringparam', 'title', entry['source_title'],
-                        '--stringparam', 'sigle', entry['source_sigle'],
-                        '--param', 'manifestationFile', f"'file://{manifestation_file}'",
-                        str(vars.SCRIPTS['prepare_sources']),
-                        str(source_file),
-                    ], capture_output=True, text=True, check=True)
-
-                    print(f"\t[OK] Source file processed.")
-
-                    original_filename = Path(source_file).name
-                    source_output_path = vars.LOCAL_PATHS['_edirom'] / "sources" / original_filename
-                    source_output_path.parent.mkdir(parents=True, exist_ok=True)
-                    utils._create_file(result.stdout, source_output_path, format_xml=True)
-                    print(f"\t[OK] Source file saved as {source_output_path.name}.")
-
-                except subprocess.CalledProcessError as e:
-                    print(f"\t[ERROR] Source transformation failed with exit code {e.returncode} | {e.stderr}")
-                finally:
                     os.unlink(manifestation_file)
+                except Exception:
+                    pass
 
-                
+        return source_maps
                 
