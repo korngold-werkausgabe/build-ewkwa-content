@@ -5,6 +5,9 @@ import sys
 ### MODULE IMPORTS ###
 import global_variables as vars
 
+def _get_matching_entry(list: list, substring: str) -> bool:
+    return next((item for item in list if substring in item), None) is not None
+
 def _get_xml_by_id(folder_path: Path, element_id: str) -> etree._Element:
     try:
         parser = etree.XMLParser(resolve_entities=False)
