@@ -9,7 +9,7 @@ NAMESPACES = {
 }
 
 base_path = Path(__file__).parent
-base_path_test = Path('/Users/diginaut/Repositories/Gitlab/Korngold/editions/series-c/c7_robin-hood')
+base_path_test=Path('.')
 
 LOCAL_PATHS = {
     'frbr': Path.joinpath(base_path_test, Path('frbr-tree.xml')),
@@ -25,5 +25,12 @@ LOCAL_PATHS = {
 }
 
 SCRIPTS = {
-    'prepare_sources': Path.joinpath(base_path / 'scripts' / 'prepareSources.xsl')
+    'prepare_sources': Path.joinpath(base_path / 'scripts' / 'prepareSources.xsl'),
+    'build_nav': Path.joinpath(base_path / 'scripts' / 'buildNav.xsl'),
+    'build_conc': Path.joinpath(base_path / 'scripts' / 'buildConnectionsByXML.xql'),
+    'build_edirom_file': Path.joinpath(base_path / 'scripts' / 'buildEdiromFile.xsl')
+}
+
+TEMPLATES = {
+    'template_edirom_file': Path.joinpath(base_path / 'templates' / 'template_edirom-file.xml')
 }

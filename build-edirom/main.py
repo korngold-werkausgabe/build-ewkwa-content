@@ -7,6 +7,8 @@ from pprint import pprint
 import parse_frbr
 import sources
 import global_variables as vars
+from build_edirom_file import build_edirom
+
 
 def main():
     print("=" * 70)
@@ -14,15 +16,25 @@ def main():
     print("=" * 70)
 
     # Parse the frbr-tree.xml and convert it to JSON format
-    #frbr = parse_frbr.write_frbr_to_json("/Users/diginaut/Repositories/Gitlab/Korngold/editions/series-c/c7_robin-hood/frbr-tree.xml")
     frbr_json = parse_frbr.write_frbr_to_json(vars.LOCAL_PATHS['frbr'])
 
-    with open("file.json", "a", encoding="utf-8") as f:
-        f.write(str(frbr_json))
+    with open('./frbr.json', 'w', encoding='utf-8') as f:
+        import json
+        json.dump(frbr_json, f, ensure_ascii=False, indent=4)
 
     print(f"\n\t[OK] Found {len(frbr_json['work_list'])} work(s) to process\n")
+
+    print("=" * 70)
+    print("2. Step: Preparation of sources")
+    print("=" * 70)
         
     sources.prepare_sources(frbr_json['manifestation_list'])
+
+    print("=" * 70)
+    print("3. Step: Build Edirom.xml file")
+    print("=" * 70)
+
+    edirom_output = build_edirom(frbr_json)
 
 if __name__ == "__main__":
     main()
