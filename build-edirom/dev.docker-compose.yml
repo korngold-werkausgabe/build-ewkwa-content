@@ -1,0 +1,21 @@
+services:
+  dev:
+    build:
+      context: ..
+      dockerfile: build-edirom/Dockerfile.dev
+    container_name: build-edirom-content-dev
+    working_dir: /app
+    user: "1000:1000"
+    volumes:
+      # Mount the data repo that contains frbr-tree.xml, Edirom/, Quellen/, etc.
+      - ${DATA_REPO_ROOT:?Set DATA_REPO_ROOT to the data repo root}:/app
+      # Mount the output directory from the data repo.
+      - ${DATA_REPO_ROOT:?Set DATA_REPO_ROOT to the data repo root}/build-xar:/output
+      # Mount this script repo into the location expected by the Python scripts.
+      - ${SCRIPT_REPO_ROOT:-..}:/app/build-ewkwa-content
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
+    network_mode: host
+    command: /bin/bash

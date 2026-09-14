@@ -181,3 +181,6 @@ python build-ewkwa-content/build-edirom/prepare-content.py
 - **XAR-Datei ist leer**: Check `prepare-content.log` für Fehler im Python-Skript
 - **Build schlägt fehl**: Docker-Image rebuild: `docker build -f build-ewkwa-content/build-edirom/Dockerfile.dev -t edirom-content-builder:local .`
 - **Berechtigungsfehler**: `chmod +x ./build-ewkwa-content.sh`
+
+## Dev-Env
+`docker compose -f build-edirom/dev.docker-compose.yml exec dev python /app/build-ewkwa-content/main.py`
