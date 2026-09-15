@@ -68,16 +68,15 @@
             </xsl:choose>
             </xsl:attribute>
             <xsl:attribute name="sortNo"><xsl:value-of select="$itemPos"/></xsl:attribute>
-            <xsl:attribute name="targets">  
-                <xsl:text>xmldb:exist:///db/apps/edirom-content/</xsl:text>  
-                <xsl:value-of select="$volSlug"/>
-                <xsl:text>/</xsl:text>  
-                <xsl:choose>
-                    <xsl:when test="$subDiv and $subDiv != '' and $subDiv != 'None'">
-                        <xsl:value-of select="$parentCatId"/>
-                    </xsl:when>
-                    <xsl:otherwise/>
-                </xsl:choose>
+            <xsl:attribute name="targets">
+                <xsl:text>xmldb:exist:///db/apps/edirom-content/</xsl:text>
+                <xsl:if test="$volSlug and $volSlug != ''">
+                    <xsl:value-of select="$volSlug"/>
+                    <xsl:text>/</xsl:text>
+                </xsl:if>
+                <xsl:if test="$subDiv and $subDiv != '' and $subDiv != 'None'">
+                    <xsl:value-of select="$parentCatId"/>
+                </xsl:if>
                 <xsl:value-of select="@targets"/>
             </xsl:attribute>
             <xsl:apply-templates select="@*[name() != 'targets']|node()"/>
