@@ -70,12 +70,13 @@
             <xsl:attribute name="sortNo"><xsl:value-of select="$itemPos"/></xsl:attribute>
             <xsl:attribute name="targets">
                 <xsl:text>xmldb:exist:///db/apps/edirom-content/</xsl:text>
-                <xsl:if test="$volSlug and $volSlug != ''">
+                <xsl:if test="$volSlug and $volSlug != '' and $volSlug != 'None'">
                     <xsl:value-of select="$volSlug"/>
                     <xsl:text>/</xsl:text>
                 </xsl:if>
                 <xsl:if test="$subDiv and $subDiv != '' and $subDiv != 'None'">
-                    <xsl:value-of select="$parentCatId"/>
+                    <xsl:value-of select="$subDiv"/>
+                    <xsl:text>/</xsl:text>
                 </xsl:if>
                 <xsl:value-of select="@targets"/>
             </xsl:attribute>

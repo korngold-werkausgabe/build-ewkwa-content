@@ -99,7 +99,10 @@ def build_edirom(frbr_json: dict):
                     if nav_id != '':
                         print(f"\t[INFO] Found nav_id: {nav_id}")
                         nav_id = nav_id.strip('#')
-                        nav_output = _build_nav(nav_id, sub_div,  work['expression_list'][0]['edition_slug'])
+                        if "edition_slug" in work['expression_list'][0]:
+                            nav_output = _build_nav(nav_id, vol_slug, work['expression_list'][0]['edition_slug'])
+                        else:
+                            nav_output = _build_nav(nav_id, vol_slug, sub_div)
 
                     ## CONC ##
                     conc_ids = []
