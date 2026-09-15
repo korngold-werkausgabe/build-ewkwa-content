@@ -28,7 +28,7 @@ def main():
     print("2. Step: Preparation of sources")
     print("=" * 70)
         
-    sources.prepare_sources(frbr_json['manifestation_list'])
+    prepare_sources(frbr_json['manifestation_list'])
 
     print("=" * 70)
     print("3. Step: Build Edirom.xml file")

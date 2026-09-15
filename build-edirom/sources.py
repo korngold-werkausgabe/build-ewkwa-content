@@ -70,8 +70,10 @@ def _get_source_info(source_id: str) -> tuple:
 
     return source_title, source_sigle, targets
 
-def prepare_sources(manifestation_list: dict) -> list:
+def prepare_sources(manifestation_list: dict):
     source_maps = _generate_source_maps(manifestation_list)
+    edirom_sources_dir = vars.LOCAL_PATHS["_edirom"] / "sources"
+    edirom_sources_dir.mkdir(parents=True, exist_ok=True)
 
     for entry in source_maps:
         for target in entry['targets']:
@@ -109,6 +111,9 @@ def prepare_sources(manifestation_list: dict) -> list:
                     str(vars.SCRIPTS['prepare_sources']),
                     str(source_file),
                 ], capture_output=True, text=True, check=True)
+                output_file = edirom_sources_dir / source_file.name
+                utils._create_file(result.stdout, output_file, format_xml=True)
+
 
             except subprocess.CalledProcessError as e:
                 print(f"\t[ERROR] Source transformation failed: {e.stderr}")
@@ -119,6 +124,4 @@ def prepare_sources(manifestation_list: dict) -> list:
                     os.unlink(manifestation_file)
                 except Exception:
                     pass
-
-        return source_maps
                 
