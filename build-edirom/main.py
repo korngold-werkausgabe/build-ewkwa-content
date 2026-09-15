@@ -3,11 +3,9 @@
 Prepare Edirom Content dynamically from frbr-tree.xml
 Needed files: frbr-tree.xml, nav.xml, kb_sources.xml, Textkritische-Anmerkungen/*.xml, Quellen/*.xml
 """
-from pprint import pprint
-import parse_frbr
-import sources
 import global_variables as vars
-from build_edirom_file import build_edirom
+from parse_frbr import write_frbr_to_json
+from sources import prepare_sources
 from edirom_file import build_edirom
 
 
@@ -17,7 +15,7 @@ def main():
     print("=" * 70)
 
     # Parse the frbr-tree.xml and convert it to JSON format
-    frbr_json = parse_frbr.write_frbr_to_json(vars.LOCAL_PATHS['frbr'])
+    frbr_json = write_frbr_to_json(vars.LOCAL_PATHS['frbr'])
 
     with open('./frbr.json', 'w', encoding='utf-8') as f:
         import json
