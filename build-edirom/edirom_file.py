@@ -19,7 +19,6 @@ def _build_nav(nav_id: str, vol_slug: str, sub_div: str) -> etree.Element:
 
     if not nav_file or nav_file == Path('') or not nav_file.exists():
         print(f"\t[WARN] No nav file found - using empty fallback", file=sys.stderr)
-        nav_output = etree.Element('{%s}navigatorDefinition' % vars.NAMESPACES['edirom'])
     else:
         try:
             nav_path_abs = Path(nav_file).resolve()
@@ -34,10 +33,8 @@ def _build_nav(nav_id: str, vol_slug: str, sub_div: str) -> etree.Element:
             nav_output = etree.fromstring(result.stdout)
         except FileNotFoundError:
             print(f"\t[WARN] xsltproc not found - using empty fallback", file=sys.stderr)
-            nav_output = nav_output = etree.Element('{%s}navigatorDefinition' % vars.NAMESPACES['edirom'])
         except subprocess.CalledProcessError as e:
             print(f"\t[FAIL] buildNav.xsl failed: {e.stderr}", file=sys.stderr)
-            nav_output = nav_output = etree.Element('{%s}navigatorDefinition' % vars.NAMESPACES['edirom'])
 
     """ nav_path = tmp_path / f"{sub_div}_nav.xml" if sub_div != "" else tmp_path / "nav.xml"
     utils._create_file(nav_output, nav_path, format_xml=True) """
@@ -65,27 +62,23 @@ def build_concordances(conc_ids: list, sub_div: str, vol_slug: str) -> etree.Ele
         utils._create_file(result.stdout, conc_path, format_xml=True)
     except FileNotFoundError:
         print(f"\t[WARN] basex not found - using empty fallback", file=sys.stderr)
-        conc_output = etree.Element('{%s}concordance' % vars.NAMESPACES['edirom'])
     except subprocess.CalledProcessError as e:
         print(f"\t[FAIL] buildConnectionsByXML.xql failed: {e.stderr}", file=sys.stderr)
-        conc_output = etree.Element('{%s}concordance' % vars.NAMESPACES['edirom'])
 
     """ conc_path = tmp_path / f"{sub_div}_conc.xml" if sub_div != "" else tmp_path / "conc.xml"
     utils._create_file(conc_output, conc_path, format_xml=True) """
     print(f"\t[OK] Navigation complete")
     return conc_output
 
-def build_edirom(frbr_json: dict) -> bool:
+def build_edirom(frbr_json: dict):
     edition_name = frbr_json['edition_name']
     vol_slug = frbr_json['vol_slug']
-    tmp_nav_path = None
 
     works_wrapper = etree.Element('{%s}works' % vars.NAMESPACES['edirom'], nsmap={None: vars.NAMESPACES['edirom']})
-
+    
     for xid, work in enumerate(frbr_json['work_list']):
 
         sub_div = ""
-
         if work["type"] == "collection":
             sub_div = work["expression_list"][0]["edition_slug"]
             
@@ -163,7 +156,6 @@ def build_edirom(frbr_json: dict) -> bool:
         print(f"    |   |   [OK] buildEdiromFile.xsl processed")
         # Save - xsltproc already outputs formatted XML with declaration
         utils._create_file(result.stdout, vars.LOCAL_PATHS["_edirom"] / "edition.xml", format_xml=True)
-        return True
+        
     except subprocess.CalledProcessError as e:
         print(f"    |   |   [FAIL] [E1] buildEdiromFile.xsl failed: {e.stderr}", file=sys.stderr)
-        return False

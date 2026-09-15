@@ -8,6 +8,7 @@ import parse_frbr
 import sources
 import global_variables as vars
 from build_edirom_file import build_edirom
+from edirom_file import build_edirom
 
 
 def main():
@@ -31,10 +32,16 @@ def main():
     prepare_sources(frbr_json['manifestation_list'])
 
     print("=" * 70)
-    print("3. Step: Build Edirom.xml file")
+    print("3. Step: Build edirom.xml file")
     print("=" * 70)
 
-    edirom_output = build_edirom(frbr_json)
+    build_edirom(frbr_json)
+
+    print("=" * 70)
+    print("4. Step: Build works.xml file")
+    print("=" * 70)
+
+    build_works_file(frbr_json)
 
 if __name__ == "__main__":
     main()
