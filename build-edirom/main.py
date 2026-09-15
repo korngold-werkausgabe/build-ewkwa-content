@@ -7,6 +7,7 @@ import global_variables as vars
 from parse_frbr import write_frbr_to_json
 from sources import prepare_sources
 from edirom_file import build_edirom
+from works_file import build_works_file
 
 
 def main():

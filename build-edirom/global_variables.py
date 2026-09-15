@@ -21,16 +21,19 @@ LOCAL_PATHS = {
     'tmp': Path.joinpath(base_path_test, Path('tmp')),
     'scripts': Path(__file__).parent,
     'sources': Path.joinpath(base_path_test, Path('Quellen')),
-    'templates': Path.joinpath(base_path_test, Path('build-ewkwa-content') / 'build-edirom' / 'templates')
+    'templates': Path.joinpath(base_path, Path('templates'))
 }
 
 SCRIPTS = {
     'prepare_sources': Path.joinpath(base_path / 'scripts' / 'prepareSources.xsl'),
     'build_nav': Path.joinpath(base_path / 'scripts' / 'buildNav.xsl'),
     'build_conc': Path.joinpath(base_path / 'scripts' / 'buildConnectionsByXML.xql'),
-    'build_edirom_file': Path.joinpath(base_path / 'scripts' / 'buildEdiromFile.xsl')
+    'build_edirom_file': Path.joinpath(base_path / 'scripts' / 'buildEdiromFile.xsl'),
+    'build_tkas': Path.joinpath(base_path / 'scripts' / 'buildEdiromTkAs.xql')
 }
 
 TEMPLATES = {
-    'template_edirom_file': Path.joinpath(base_path / 'templates' / 'template_edirom-file.xml')
+    'template_edirom_file': Path.joinpath(base_path / 'templates' / 'template_edirom-file.xml'),
+    'template_edirom-works': Path.joinpath(base_path / 'templates' / 'template_edirom-works.xml'),
+    'template_work': Path.joinpath(base_path / 'templates' / 'template_work.xml')
 }

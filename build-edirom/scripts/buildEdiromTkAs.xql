@@ -44,7 +44,7 @@ declare function local:textRendition($node as node()?) as xs:string {
 };
 
 declare function local:buildSiglum($node as node()?, $sources as node()*, $subDiv as xs:string, $volumeName as xs:string) as xs:string {
-  $node/@siglum/normalize-space()
+  normalize-space(string(($node/@siglum, $node/text())[1]))
 };
 
 declare function local:buildMeasures($measures as node()?) as xs:string {
