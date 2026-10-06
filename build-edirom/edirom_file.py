@@ -58,7 +58,7 @@ def build_concordances(conc_ids: list, sub_div: str, vol_slug: str) -> etree.Ele
         ], capture_output=True, text=True, check=True)
         conc_output = result.stdout
         print(f"\t[OK] buildConnectionsByXML.xql processed")
-        conc_path = tmp_path / f"{sub_div}_nav.xml" if sub_div != "" else tmp_path / "conc.xml"
+        conc_path = tmp_path / f"{sub_div}_conc.xml" if sub_div != "" else tmp_path / "conc.xml"
         utils._create_file(result.stdout, conc_path, format_xml=True)
     except FileNotFoundError:
         print(f"\t[WARN] basex not found - using empty fallback", file=sys.stderr)
