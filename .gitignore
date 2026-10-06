@@ -30,4 +30,4 @@ Thumbs.db
 
 *.json
 .env
-.xpr
+*.xpr
