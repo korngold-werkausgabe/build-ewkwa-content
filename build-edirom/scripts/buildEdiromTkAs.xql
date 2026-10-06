@@ -23,7 +23,31 @@ declare function local:composePath($volume as xs:string, $subDiv as xs:string?, 
   else "xmldb:exist:///db/apps/edirom-content/" || $volume || "/" || $rest
 };
 
-declare function local:measuresToString($measures as node()?) as xs:string {
+declare function local:normalize-text-nodes($node as node()) as node() {
+  typeswitch($node)
+    case text()
+      return
+        if (normalize-space($node) = '') then
+          $node
+        else
+          text { normalize-space($node) }
+    case element() return element { node-name($node) } {
+      $node/@*,
+      for $child in $node/node()
+      return local:normalize-text-nodes($child)
+    }
+    default return $node
+};
+
+declare function local:textRendition($node as node()?) as xs:string {
+  $node/normalize-space()
+};
+
+declare function local:buildSiglum($node as node()?, $sources as node()*, $subDiv as xs:string, $volumeName as xs:string) as xs:string {
+  normalize-space(string(($node/@siglum, $node/text())[1]))
+};
+
+declare function local:buildMeasures($measures as node()?) as xs:string {
   let $measures-string := for $node in $measures/*
   return
     switch ($node/name())
