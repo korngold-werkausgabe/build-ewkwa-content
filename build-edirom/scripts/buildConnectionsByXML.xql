@@ -53,8 +53,8 @@ return
           if ($concordance) then
           <group>
               <names>
-                <name xml:lang='de'>{$concordance/*[local-name() = 'labels'][@xml:lang='de']}</name>
-                <name xml:lang='en'>{$concordance/*[local-name() = 'labels'][@xml:lang='en']}</name>
+                <name xml:lang='de'>{string(($concordance/*[local-name() = 'labels'])[@xml:lang='de'])}</name>
+                <name xml:lang='en'>{string(($concordance/*[local-name() = 'labels'])[@xml:lang='en'])}</name>
               </names>
               <connections label="Takt">
                 <labels>
