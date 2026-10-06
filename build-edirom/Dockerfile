@@ -56,7 +56,7 @@ WORKDIR /Edirom-Edition-Packaging
 COPY --from=prepare-content /app/Edirom-Config/local.properties .
 COPY --from=prepare-content /app/Edirom-Config/*prefs.xml .
 COPY --from=prepare-content /prepare-content.log .
-COPY --from=prepare-content /‚app/Frontmatter+Einleitung ./documents
+COPY --from=prepare-content /app/Frontmatter+Einleitung ./documents
 COPY --from=prepare-content /app/Edirom/. .
 
 # Create output directory  
