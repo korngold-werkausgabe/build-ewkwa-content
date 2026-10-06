@@ -107,7 +107,7 @@ def _append_critical_remarks(notes_stmt: etree._Element, work: dict, expression_
         notes_stmt.append(wrapper_annot)
 
 
-def _build_component_work_from_template(template_path: Path, sub_work: dict, index: int, parent_work: dict, sub_div: str, vol_slug: str) -> etree._Element:
+def _build_component_work(template_path: Path, sub_work: dict, index: int, parent_work: dict, sub_div: str, vol_slug: str) -> etree._Element:
     parser = etree.XMLParser(remove_blank_text=True)
     tree = etree.parse(str(template_path), parser)
     component_element = tree.getroot()
@@ -209,9 +209,15 @@ def _build_work_element(work: dict, vol_slug: str) -> tuple[etree._Element, str]
 
     if work.get("type") == "collection":
         print(f"\t[INFO]  Build collection components: count={len(work.get('component_list', []))}")
+
+        notes_stmt = etree.Element("{%s}notesStmt" % vars.NAMESPACES["mei"])
+        _append_critical_remarks(notes_stmt, work, main_expression.get("id", ""), sub_div, vol_slug)
+        if len(notes_stmt) > 0:
+            work_element.append(notes_stmt)
+
         component_list = etree.Element("{%s}componentList" % vars.NAMESPACES["mei"])
         for idx, sub_work in enumerate(work.get("component_list", []), 1):
-            component_element = _build_component_work_from_template(template_path, sub_work, idx, work, sub_div, vol_slug)
+            component_element = _build_component_work(template_path, sub_work, idx, work, sub_div, vol_slug)
             component_list.append(component_element)
         work_element.append(component_list)
 
@@ -298,9 +304,9 @@ def build_works_file(frbr_json: dict) -> None:
 
     for work in work_list:
         work_element, sub_div = _build_work_element(work, vol_slug)
-        grouped_work_elements.setdefault(sub_div, []).append(work_element)
+        grouped_work_elements.setdefault(sub_div or "", []).append(work_element)
 
     for sub_div, elements in grouped_work_elements.items():
-        print(f"[INFO] Assemble works.xml for sub_div='{sub_div}' with {len(elements)} work element(s)")
         if not _assemble_works_xml(elements, sub_div, edition_name):
-
+            print(f"[WARN] no work found for sub_div='{sub_div or 'default'}'")
+        
