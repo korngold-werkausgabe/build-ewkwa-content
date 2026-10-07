@@ -116,12 +116,6 @@ declare function local:buildSmufl($symbol as node()) as item()* {
     <rend xmlns="http://www.music-encoding.org/ns/mei" glyph.uri="{$glyph-uri}"/>
 };
 
-declare function local:octaveLabel($oct as xs:string) as xs:string {
-  if ($oct = '1') then 'Subkontra'
-  else if ($oct = '2') then 'Kontra'
-  else ''
-};
-
 declare function local:renderPitchMarkup($pitch as node()) as item()* {
   let $pname := normalize-space(string($pitch/@pname))
   let $octValue := normalize-space(string($pitch/@oct))
@@ -173,13 +167,7 @@ declare function local:buildNoteTextContent($nodes as node()*, $sources as node(
         default
           return ''
     else
-      let $nextNode := $nodes[$pos + $index]
-      let $isNextElement := exists($nextNode) and $nextNode/self::element()
-      return
-        if ($isNextElement and $node/string() != '' and not(ends-with($node/string(), ' ')) and not(ends-with($node/string(), '('))) then
-          concat($node/string(), ' ')
-        else
-          $node/string()
+      $node/string()
 };
 
 declare function local:expandMeasureSequenceValue($value as xs:string?) as xs:string* {
@@ -250,25 +238,17 @@ declare function local:cnListMdivId($cnList as node()?) as xs:string {
   else local:resolveIdRef(string(($cnList/@mdiv-target, $cnList/@mdiv, $cnList/@target)[1]))
 };
 
-declare function local:sourceDocForCnList($sources as node()*, $cnList as node()?, $measure as node()?) as element()? {
-  let $main-source-id :=
+declare function local:sourceDocForCnList($sources as node()*, $cnList as node()?, $measure as node()?) as document-node()? {
+  let $source-id :=
     if (exists($cnList)) then local:cnListSourceId($cnList)
     else if (exists($measure)) then local:resolveIdRef(string(($measure/@source, $measure/@main-source, $measure/@source-target, $measure/@siglum)[1]))
     else ''
   let $source-node :=
-    if ($main-source-id = '') then ()
-    else (
-      $sources//*[@xml:id = $main-source-id or @id = $main-source-id][1],
-      $sources//*[@xml:id = $main-source-id or @id = $main-source-id]/ancestor-or-self::mei:mei[1][1],
-      $sources//*[contains(string(@xml:id), $main-source-id) or contains(string(@id), $main-source-id)][1],
-      $sources//*[contains(string(@xml:id), $main-source-id) or contains(string(@id), $main-source-id)]/ancestor-or-self::mei:mei[1][1]
-    )[1]
+    if ($source-id = '') then ()
+    else ($sources//*[@xml:id = $source-id or @id = $source-id][1])
   return
     if (empty($source-node)) then ()
-    else (
-      $source-node/ancestor-or-self::mei:mei[1],
-      root($source-node)
-    )[1]
+    else root($source-node)
 };
 
 declare function local:measureRefValues($measure as node()) as xs:string* {
@@ -329,6 +309,37 @@ declare function local:findMeasureInSource($sourceDoc as node()*, $mdiv-target-i
     if (exists($labelMatches)) then $labelMatches[1] else ()
 };
 
+declare function local:resolveMeasureUris($sources as node()*, $measure as node()*, $subDiv as xs:string*) as xs:string* {
+  let $cnList := ($measure/ancestor::*[@main-source or @source-target][1], $measure/parent::*[@main-source or @source-target])[1]
+  let $sourceDoc := local:sourceDocForCnList($sources, $cnList, $measure)
+  let $mdiv-target-id := if (exists($cnList)) then local:cnListMdivId($cnList) else local:resolveIdRef(string(($measure/@mdiv, $measure/@part, $measure/@staff)[1]))
+  let $measure-ids := distinct-values(
+    for $measure-label in local:measureRefValues($measure)
+    let $match := local:findMeasureInSource($sourceDoc, $mdiv-target-id, $measure-label, string($measure/@siglum))
+    return if (exists($match)) then string($match/@xml:id) else ()
+  )
+  return
+    if (count($measure-ids) gt 0) then
+      local:measureIdsToUris($sourceDoc, $measure-ids, $subDiv)
+    else if (empty($sourceDoc) or empty($cnList)) then
+      ()
+    else
+      let $measure-xml-id := string(($measure/@xml:id, $measure/@id)[1])
+      let $measure-n := string(($measure/@n, $measure/@label)[1])
+      let $measure-label := string(($measure/@label, $measure/@n)[1])
+      let $mdiv-name := xs:string(($measure/@mdiv, $measure/@part, $measure/@staff)[1])
+      let $siglum := xs:string(($measure/@siglum)[1])
+      let $fallbackMatch := (
+        $sourceDoc//mei:measure[@xml:id = $measure-xml-id],
+        $sourceDoc//mei:measure[@id = $measure-xml-id],
+        $sourceDoc//mei:measure[@n = $measure-n],
+        $sourceDoc//mei:measure[@label = $measure-label],
+        $sourceDoc//mei:mdiv[@xml:id = $mdiv-name or @id = $mdiv-name or @n = $mdiv-name]//mei:measure[@xml:id = $measure-xml-id or @id = $measure-xml-id or @n = $measure-n or @label = $measure-label]
+      )[1]
+      let $fallback-id := if (exists($fallbackMatch)) then xs:string($fallbackMatch/@xml:id) else ()
+      return if ($fallback-id != '') then local:measureIdsToUris($sourceDoc, $fallback-id, $subDiv) else ()
+};
+
 declare function local:noteMeasureUri($sources as node()*, $note as node(), $subDiv as xs:string*) as xs:string* {
   let $cnList := ($note/ancestor::*[@main-source or @source-target][1], $note/parent::*[@main-source or @source-target])[1]
   let $sourceDoc := local:sourceDocForCnList($sources, $cnList, ())
@@ -353,50 +364,7 @@ declare function local:noteMeasureUri($sources as node()*, $note as node(), $sub
 };
 
 declare function local:measureUri($sources as node()*, $measure as node()*, $subDiv as xs:string*) as xs:string {
-  try {
-    let $cnList := ($measure/ancestor::*[@main-source or @source-target][1], $measure/parent::*[@main-source or @source-target])[1]
-    let $sourceDoc := local:sourceDocForCnList($sources, $cnList, $measure)
-    let $mdiv-target-id := if (exists($cnList)) then local:cnListMdivId($cnList) else local:resolveIdRef(string(($measure/@mdiv, $measure/@part, $measure/@staff)[1]))
-    let $measure-labels := local:measureRefValues($measure)
-    let $measure-ids := distinct-values(
-      for $measure-label in $measure-labels
-      let $match := local:findMeasureInSource($sourceDoc, $mdiv-target-id, $measure-label, string($measure/@siglum))
-      return if (exists($match)) then string($match/@xml:id) else ()
-    )
-    return
-      if (count($measure-ids) gt 0) then
-        let $uris := local:measureIdsToUris($sourceDoc, $measure-ids, $subDiv)
-        return xs:string(string-join($uris, ' '))
-      else if (empty($sourceDoc) or empty($cnList)) then
-        ''
-      else
-        let $measure-xml-id := string(($measure/@xml:id, $measure/@id)[1])
-        let $measure-n := string(($measure/@n, $measure/@label)[1])
-        let $measure-label := string(($measure/@label, $measure/@n)[1])
-        let $mdiv-name := xs:string(($measure/@mdiv, $measure/@part, $measure/@staff)[1])
-        let $siglum := xs:string(($measure/@siglum)[1])
-        let $fallbackDoc := (
-          $sourceDoc//mei:measure[@xml:id = $measure-xml-id],
-          $sourceDoc//mei:measure[@id = $measure-xml-id],
-          $sourceDoc//mei:measure[@n = $measure-n],
-          $sourceDoc//mei:measure[@label = $measure-label],
-          $sourceDoc//mei:measure[@id = $measure-n],
-          $sourceDoc//mei:mdiv[@xml:id = $mdiv-name or @id = $mdiv-name or @n = $mdiv-name]//mei:measure[@xml:id = $measure-xml-id or @id = $measure-xml-id or @n = $measure-n or @label = $measure-label]
-        )[1]
-        let $fallbackMatch := if (exists($fallbackDoc)) then local:findMeasureInSource($fallbackDoc, $mdiv-name, $measure-label, $siglum) else ()
-        let $fallback-id :=
-          if (exists($fallbackMatch)) then xs:string($fallbackMatch/@xml:id)
-          else if ($measure-xml-id != '' and exists($fallbackDoc//*[local-name() = 'measure'][(@xml:id = $measure-xml-id or @id = $measure-xml-id)])) then xs:string($measure-xml-id)
-          else ()
-        let $fallback-ids := if (exists($fallback-id) and string-length(string($fallback-id)) gt 0) then $fallback-id else ()
-        let $fallback-url := if (exists($fallbackDoc) and count($fallback-ids) gt 0) then
-          let $uris := local:measureIdsToUris($fallbackDoc, $fallback-ids, $subDiv)
-          return string-join($uris, ' ')
-        else ''
-        return xs:string($fallback-url)
-  } catch * {
-    xs:string('')
-  }
+  string-join(local:resolveMeasureUris($sources, $measure, $subDiv), ' ')
 };
 
 declare function local:noteMeasures($note as node()) as node()* {
