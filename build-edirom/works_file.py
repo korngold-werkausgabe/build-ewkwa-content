@@ -55,12 +55,12 @@ def extract_expression_struct(work: dict) -> dict:
 
     return output
 
-
-def _get_cnl_ids_for_expression(work: dict, expression_id: str) -> list:
+def _get_annotation_ids_for_expression(work: dict, expression_id: str, markers: tuple[str, ...] = ("cnl", "rdg", "rdgs")) -> list:
     if not expression_id:
         return []
 
-    cnl_ids = []
+    annotation_ids = []
+    seen = set()
     for relation in work.get("relation_list", []):
         rel_type = relation.get("rel", "")
         target = relation.get("targets", "").lstrip("#")
@@ -68,40 +68,120 @@ def _get_cnl_ids_for_expression(work: dict, expression_id: str) -> list:
             continue
 
         for item in relation.get("plist", []):
-            if "cnl" in item:
-                cnl_ids.append(item.lstrip("#"))
+            item_id = item.lstrip("#")
+            if not item_id:
+                continue
+            lowered = item_id.lower()
+            if any(marker in lowered for marker in markers) and item_id not in seen:
+                annotation_ids.append(item_id)
+                seen.add(item_id)
 
-    return cnl_ids
+    return annotation_ids
+
+
+def _merge_annot_fragments(annotation_str: str) -> str:
+    if not annotation_str:
+        return ""
+
+    try:
+        wrapped_str = f'<temp xmlns="{vars.NAMESPACES["mei"]}">{annotation_str}</temp>'
+        wrapper_elem = etree.fromstring(wrapped_str.encode("utf-8"))
+        merged = {}
+
+        for annot in wrapper_elem:
+            xml_id = annot.get("{http://www.w3.org/XML/1998/namespace}id") or annot.get("xml:id")
+            if not xml_id:
+                continue
+            if xml_id not in merged:
+                merged[xml_id] = deepcopy(annot)
+                continue
+
+            existing = merged[xml_id]
+            existing_plist = (existing.get("plist") or "").split()
+            new_plist = (annot.get("plist") or "").split()
+            combined_plist = existing_plist + [value for value in new_plist if value not in existing_plist]
+            existing.set("plist", " ".join(combined_plist))
+
+        return "".join(etree.tostring(elem, encoding="unicode") for elem in merged.values())
+    except Exception as parse_error:
+        print(f"\t[WARN] Failed to merge annotation fragments: {parse_error}", file=sys.stderr)
+        return annotation_str
+
+
+def build_rdg_list_annotations(rdgl_xml: str, sources_path: str, sub_div: str, vol_slug: str) -> str:
+    try:
+        build_rdgs_xql = vars.SCRIPTS.get("build_rdgs") or vars.SCRIPTS.get("build_tkas")
+        if build_rdgs_xql is None:
+            print("\t[WARN] No rdg script configured for rdgList annotations", file=sys.stderr)
+            return ""
+
+        sources_path_abs = Path(sources_path).resolve()
+        collection_path_abs = (vars.LOCAL_PATHS["tmp"] / sub_div).resolve() if sub_div else vars.LOCAL_PATHS["tmp"].resolve()
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False, encoding="utf-8") as tmp_file:
+            tmp_file.write(rdgl_xml)
+            tmp_rdg_file = tmp_file.name
+
+        try:
+            result = subprocess.run([
+                "basex",
+                f"-b cnListFile={tmp_rdg_file}",
+                f"-b collectionPath={collection_path_abs}",
+                f"-b sourcesPath={sources_path_abs}",
+                f"-b subDiv={sub_div}",
+                f"-b volumeName={vol_slug}",
+                str(build_rdgs_xql),
+            ], capture_output=True, text=True, check=True)
+            return result.stdout
+        finally:
+            Path(tmp_rdg_file).unlink(missing_ok=True)
+    except FileNotFoundError:
+        print("\t[WARN] basex not found, no rdg annotations generated", file=sys.stderr)
+        return ""
+    except subprocess.CalledProcessError as error:
+        script_name = Path(getattr(build_rdgs_xql, "name", str(build_rdgs_xql))).name if "build_rdgs_xql" in locals() else "rdg script"
+        print(f"\t[WARN] {script_name} failed: {error.stderr}", file=sys.stderr)
+        return ""
 
 
 def _append_critical_remarks(notes_stmt: etree._Element, work: dict, expression_id: str, sub_div: str, vol_slug: str) -> None:
-    cnl_ids = _get_cnl_ids_for_expression(work, expression_id)
-    if not cnl_ids:
+    annotation_ids = _get_annotation_ids_for_expression(work, expression_id)
+    if not annotation_ids:
         return
 
     wrapper_annot = etree.Element("{%s}annot" % vars.NAMESPACES["mei"], type="criticalCommentary")
 
-    for cnl_id in cnl_ids:
-        cnl_xml = utils._get_xml_by_id(vars.LOCAL_PATHS["criticalRemarks"], cnl_id)
-        if cnl_xml is None:
+    for annotation_id in annotation_ids:
+        annotation_xml = utils._get_xml_by_id(vars.LOCAL_PATHS["criticalRemarks"], annotation_id)
+        if annotation_xml is None:
             continue
 
-        critical_remarks_str = build_critical_remarks(
-            etree.tostring(cnl_xml, encoding="unicode"),
-            str(vars.LOCAL_PATHS["sources"]),
-            sub_div,
-            vol_slug,
-        )
-        if not critical_remarks_str:
+        annotation_name = etree.QName(annotation_xml).localname
+        if annotation_name == "rdgList":
+            annotation_str = build_rdg_list_annotations(
+                etree.tostring(annotation_xml, encoding="unicode"),
+                str(vars.LOCAL_PATHS["sources"]),
+                sub_div,
+                vol_slug,
+            )
+        else:
+            annotation_str = build_critical_remarks(
+                etree.tostring(annotation_xml, encoding="unicode"),
+                str(vars.LOCAL_PATHS["sources"]),
+                sub_div,
+                vol_slug,
+            )
+
+        if not annotation_str:
             continue
 
         try:
-            wrapped_str = f'<temp xmlns="{vars.NAMESPACES["mei"]}">{critical_remarks_str}</temp>'
+            wrapped_str = f'<temp xmlns="{vars.NAMESPACES["mei"]}">{annotation_str}</temp>'
             wrapper_elem = etree.fromstring(wrapped_str.encode("utf-8"))
             for annot in wrapper_elem:
                 wrapper_annot.append(deepcopy(annot))
         except Exception as parse_error:
-            print(f"\t[WARN] Failed to parse critical remarks for '{cnl_id}': {parse_error}", file=sys.stderr)
+            print(f"\t[WARN] Failed to parse annotation for '{annotation_id}': {parse_error}", file=sys.stderr)
 
     if len(wrapper_annot) > 0:
         notes_stmt.append(wrapper_annot)
