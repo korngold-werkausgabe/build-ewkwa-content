@@ -29,7 +29,8 @@ SCRIPTS = {
     'build_nav': Path.joinpath(base_path / 'scripts' / 'buildNav.xsl'),
     'build_conc': Path.joinpath(base_path / 'scripts' / 'buildConnectionsByXML.xql'),
     'build_edirom_file': Path.joinpath(base_path / 'scripts' / 'buildEdiromFile.xsl'),
-    'build_tkas': Path.joinpath(base_path / 'scripts' / 'buildEdiromTkAs.xql')
+    'build_tkas': Path.joinpath(base_path / 'scripts' / 'buildEdiromTkAs.xql'),
+    'build_rdgs': Path.joinpath(base_path / 'scripts' / 'buildEdiromRdgs.xql')
 }
 
 TEMPLATES = {
