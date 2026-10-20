@@ -6,6 +6,7 @@
 
   <xsl:output indent="yes"/>
   <xsl:param name="title" select="''"/>
+  <xsl:param name="sigle" select="''"/>
   <xsl:param name="manifestationFile" select="''"/>
 
   <xsl:template match="@* | node()">
@@ -19,9 +20,14 @@
       <mei:titleStmt>
         <mei:title><xsl:value-of select="$title"/></mei:title>
       </mei:titleStmt>
+      <editionStmt>
+        <edition>
+          <identifier type="siglum"><xsl:value-of select="$sigle"/></identifier>
+        </edition>
+        </editionStmt>
+      <mei:manifestationList>
+        <xsl:copy-of select="document($manifestationFile)/mei:manifestation"/>
+      </mei:manifestationList>
     </mei:fileDesc>
-    <mei:manifestationList>
-      <xsl:copy-of select="document($manifestationFile)/mei:manifestation"/>
-    </mei:manifestationList>
   </xsl:template>
 </xsl:stylesheet>

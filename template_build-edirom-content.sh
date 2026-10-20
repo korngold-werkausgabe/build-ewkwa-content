@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Edirom content locally using Dockerfile.dev
+# Build Edirom content locally using Dockerfile
 
 set -e
 
@@ -14,13 +14,13 @@ fi
 
 cd "$PROJECT_ROOT"
 
-echo "Building Edirom content using Dockerfile.dev..."
+echo "Building Edirom content using Dockerfile..."
 echo "Project root: $PROJECT_ROOT"
 echo ""
 
 # Build the image
 docker build \
-  -f build-ewkwa-content/build-edirom/Dockerfile.dev \
+  -f build-ewkwa-content/build-edirom/Dockerfile \
   -t edirom-content-builder:local \
   .
 
