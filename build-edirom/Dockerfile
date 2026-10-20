@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir lxml
 RUN useradd -m -u 1000 -s /bin/bash appuser
 
 # Copy project files from host
-#COPY . /app
+COPY . /app
 
 # Set working directory
 WORKDIR /app
