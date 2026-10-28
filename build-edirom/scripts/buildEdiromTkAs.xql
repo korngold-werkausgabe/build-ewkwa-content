@@ -1,5 +1,25 @@
 xquery version "3.1";
 
+(:
+  Script: buildEdiromTkAs.xql
+  Purpose:
+    Transform a set of source records into a normalized EDIROM-style measure
+    description for use in annotations and textual rendering. The script resolves
+    source URIs, converts measure references into strings, and renders symbolic
+    musical content such as pitches, chords, sequences, and SMuFL glyphs.
+
+  Inputs:
+    - $cnList         List of concordance identifiers or measure references.
+    - $cnListFile     Optional file listing concordance entries.
+    - $collectionPath Collection holding target source XML documents.
+    - $sourcesPath    Collection of MEI source documents.
+    - $subDiv         Optional subdivision path.
+    - $volumeName     Volume identifier used to compose source URIs.
+
+  Output:
+    XML fragments with normalized measure labels and rendered music content.
+:)
+
 declare namespace edirom = "http://www.edirom.de/ns/1.3";
 declare namespace mei = "http://www.music-encoding.org/ns/mei";
 declare namespace transform = "http://exist-db.org/xquery/transform";
@@ -16,6 +36,7 @@ declare variable $sourcesPath as xs:string external;
 declare variable $subDiv as xs:string external;
 declare variable $volumeName as xs:string external;
 
+(: Build a canonical EDIROM source path for the given volume and subdivision. :)
 declare function local:composePath($volume as xs:string, $subDiv as xs:string?, $rest as xs:string) as xs:string {
   let $subDivPath :=
     if ($subDiv and $subDiv != "" and $subDiv != "None" and $subDiv != $volume)
@@ -24,6 +45,7 @@ declare function local:composePath($volume as xs:string, $subDiv as xs:string?, 
   return "xmldb:exist:///db/apps/edirom-content/" || $volume || $subDivPath || "/" || $rest
 };
 
+(: Extract the source file name from a document or element node for use in URIs. :)
 declare function local:sourceFileName($doc as node()?) as xs:string {
   if (empty($doc)) then ''
   else
@@ -33,6 +55,8 @@ declare function local:sourceFileName($doc as node()?) as xs:string {
     return if (string-length($file-name) gt 0) then $file-name else ''
 };
 
+(: Convert measure identifiers into source URIs pointing to the corresponding
+   MEI measure elements. :)
 declare function local:measureIdsToUris($sourceDoc as node()?, $measure-ids as xs:string*, $subDiv as xs:string*) as xs:string* {
   let $base := local:sourceFileName($sourceDoc)
   let $url := local:composePath($volumeName, $subDiv, 'sources/')
@@ -44,6 +68,7 @@ declare function local:measureIdsToUris($sourceDoc as node()?, $measure-ids as x
       ()
 };
 
+(: Create a readable label for a measure or a range of measures. :)
 declare function local:measureLabel($measure as node()) as xs:string {
   if (empty($measure)) then ''
   else if (local-name($measure) = 'sequence') then
@@ -54,6 +79,7 @@ declare function local:measureLabel($measure as node()) as xs:string {
     string(($measure/@label, $measure/@n, $measure/@xml:id, $measure/@id)[1])
 };
 
+(: Render a measure list as a readable textual string for display. :)
 declare function local:measuresToString($measures as node()?) as xs:string {
   let $measures-string := for $node in $measures/*
   return
@@ -69,6 +95,7 @@ declare function local:measuresToString($measures as node()?) as xs:string {
     concat('T. ', string-join($measures-string, ', '))
 };
 
+(: Convert a pitch element into a textual notation appropriate for display. :)
 declare function local:pitchToString($pitch as node()*) as xs:string {
   let $pname := if (xs:int($pitch/@oct/normalize-space()) <= 2)
   then
@@ -92,6 +119,7 @@ declare function local:pitchToString($pitch as node()*) as xs:string {
     concat($pname, if ($oct) then concat('', $oct) else '')
 };
 
+(: Join pitch names in a chord into a compact textual representation. :)
 declare function local:buildChord($chord as node()*) as xs:string {
   string-join(
     for $pitch in $chord/pitch
@@ -101,6 +129,7 @@ declare function local:buildChord($chord as node()*) as xs:string {
   )
 };
 
+(: Join a pitch sequence using a range-like separator for display. :)
 declare function local:buildSequence($sequence as node()*) as xs:string {
   string-join(
     for $pitch in $sequence/pitch
@@ -110,12 +139,14 @@ declare function local:buildSequence($sequence as node()*) as xs:string {
   )
 };
 
+(: Create a MEI rend element pointing to the corresponding SMuFL glyph resource. :)
 declare function local:buildSmufl($symbol as node()) as item()* {
   let $glyph-uri := concat('https://smufl.korngold-werkausgabe.de/', $symbol/@glyph.name, '.xml')
   return
     <rend xmlns="http://www.music-encoding.org/ns/mei" glyph.uri="{$glyph-uri}"/>
 };
 
+(: Render pitch content with octave information and typographic emphasis. :)
 declare function local:renderPitchMarkup($pitch as node()) as item()* {
   let $pname := normalize-space(string($pitch/@pname))
   let $octValue := normalize-space(string($pitch/@oct))
@@ -139,6 +170,8 @@ declare function local:renderPitchMarkup($pitch as node()) as item()* {
     )
 };
 
+(: Recursively build the textual MEI representation for notes, measures,
+   symbols, and quoted annotation fragments. :)
 declare function local:buildNoteTextContent($nodes as node()*, $sources as node()*, $subDiv as xs:string, $volumeName as xs:string, $pos as xs:integer) as item()* {
   for $node at $index in $nodes[position() >= $pos]
   return
@@ -170,6 +203,7 @@ declare function local:buildNoteTextContent($nodes as node()*, $sources as node(
       $node/string()
 };
 
+(: Expand a sequence such as 12-15 to an ordered list of measure values. :)
 declare function local:expandMeasureSequenceValue($value as xs:string?) as xs:string* {
   let $normalized := normalize-space(string($value))
   return

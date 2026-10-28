@@ -1,5 +1,24 @@
 xquery version "3.1";
 
+(:
+  Script: buildConnectionsByXML.xql
+  Purpose:
+    Rebuild a concordance structure from existing XML concordance files. The
+    script reads all matching XML documents from a given collection, selects the
+    requested concordance entries by xml:id, and expands their connection
+    entries into a new EDIROM concordance document.
+
+  Inputs:
+    - $concIds     Comma-separated list of concordance identifiers.
+    - $concPath    Collection path containing the source concordance XML files.
+    - $subDiv     Optional subdivision path.
+    - $volSlug    Volume slug used when constructing source URIs.
+
+  Output:
+    A concordance XML document containing group, connection, and plist entries
+    for the selected concordance IDs.
+:)
+
 declare namespace mei = "http://www.music-encoding.org/ns/mei";
 declare namespace tei = "http://www.tei-c.org/ns/1.0";
 declare namespace map = "http://www.w3.org/2005/xpath-functions/map";
@@ -25,7 +44,9 @@ let $concCollection := if ($concPath and $concPath != '') then
 else
   ()
 
-(: ####################################### :)
+(: The output is built from the selected concordance IDs. Each matching XML
+   document is read, the labels are extracted, and the connection entries are
+   re-emitted in the canonical EDIROM structure. :)
 return
   <concordance
     xmlns="http://www.edirom.de/ns/1.3"

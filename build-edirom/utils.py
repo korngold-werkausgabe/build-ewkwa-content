@@ -5,14 +5,47 @@ import sys
 ### MODULE IMPORTS ###
 import global_variables as vars
 
+
 def _get_matching_entry(plist: list, substring: str) -> str:
+    """
+    Find the first item in the list that contains the given substring.
+
+    Args:
+        plist: List of strings to search through
+        substring: Substring to search for
+
+    Returns:
+        The first matching item, or empty string if no match found
+    """
     return next((item for item in plist if substring in item), '')
 
+
 def _get_matching_entries(plist: list, substring: str) -> list:
+    """
+    Find all items in the list that contain the given substring.
+
+    Args:
+        plist: List of strings to search through
+        substring: Substring to search for
+
+    Returns:
+        List of all matching items
+    """
     return [item for item in plist if substring in item]
 
+
 def _get_rels_by_id(rels: list, search_id: str, rel_type: str) -> list:
-    """ Extract ALL cnl_ids from first_level_work's relationList """
+    """
+    Extract all relations of a specific type that reference the given ID.
+
+    Args:
+        rels: List of relation dictionaries with 'rel' and 'targets' keys
+        search_id: ID to search for in relation targets
+        rel_type: Type of relation to filter by (e.g., 'hasPart')
+
+    Returns:
+        List of matching relation dictionaries
+    """
     rels_output = []
     for rel in rels:
         if rel["rel"] == rel_type and rel["targets"].strip("#") == search_id:            
@@ -20,7 +53,18 @@ def _get_rels_by_id(rels: list, search_id: str, rel_type: str) -> list:
 
     return rels_output
 
+
 def _get_xml_by_id(folder_path: Path, element_id: str) -> etree._Element:
+    """
+    Search for an XML element with a specific ID in all XML files in a folder.
+
+    Args:
+        folder_path: Path to directory containing XML files
+        element_id: The xml:id to search for
+
+    Returns:
+        The matching XML element, or None if not found
+    """
     try:
         parser = etree.XMLParser(resolve_entities=False)
         for file in folder_path.rglob('*.xml'):
@@ -39,7 +83,20 @@ def _get_xml_by_id(folder_path: Path, element_id: str) -> etree._Element:
         print(f"\t[ERROR] Error searching for element with ID {element_id} in {folder_path}: {e}")
     return None
 
+
 def _get_file(folder_path: Path, search_string: str, search_type: str ='by_id', return_full_path: bool = True) -> Path:
+    """
+    Search for an XML file containing an element with a specific ID or filename.
+
+    Args:
+        folder_path: Path to directory containing XML files
+        search_string: ID to search for (by_id) or filename substring (by_filename)
+        search_type: 'by_id' to search xml:id attributes, 'by_filename' to match filenames
+        return_full_path: If True, return full Path; if False, return filename only
+
+    Returns:
+        Path to the matching file, or empty Path if not found
+    """
     result = Path('')
     if search_type == 'by_id':
         parser = etree.XMLParser(resolve_entities=False)
@@ -64,7 +121,16 @@ def _get_file(folder_path: Path, search_string: str, search_type: str ='by_id', 
         print(f"\t[WARN] No file found for search string '{search_string}' in {folder_path}", file=sys.stderr)
     return result
 
+
 def _create_file(content: str, file_path: Path, format_xml: bool = False) -> None:
+    """
+    Write content to a file, optionally formatting as XML.
+
+    Args:
+        content: String content to write to the file
+        file_path: Path where the file should be created
+        format_xml: If True, parse and pretty-print as XML
+    """
     try:
         if format_xml:
             parser = etree.XMLParser(resolve_entities=False)

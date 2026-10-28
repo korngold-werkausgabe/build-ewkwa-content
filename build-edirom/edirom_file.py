@@ -6,7 +6,24 @@ from lxml import etree
 ### MODULE IMPORTS ###
 import global_variables as vars
 import utils
+
+
 def _build_nav(nav_id: str, vol_slug: str, sub_div: str) -> etree.Element:
+    """
+    Build navigation XML using XSLT transformation.
+
+    Processes a navigation configuration file through the buildNav.xsl
+    XSLT stylesheet to generate navigation XML for the given volume
+    and subdivision.
+
+    Args:
+        nav_id: Identifier for the navigation configuration file
+        vol_slug: Volume identifier/slug
+        sub_div: Subdivision name (empty string for root)
+
+    Returns:
+        The processed navigation XML element
+    """
     tmp_path = vars.LOCAL_PATHS['tmp'] / sub_div if sub_div != "" else vars.LOCAL_PATHS['tmp']
     tmp_path.mkdir(parents=True, exist_ok=True)
 
@@ -41,8 +58,22 @@ def _build_nav(nav_id: str, vol_slug: str, sub_div: str) -> etree.Element:
     print(f"\t[OK] Navigation complete")
     return nav_output
 
+
 def build_concordances(conc_ids: list, sub_div: str, vol_slug: str) -> etree.Element:
-    """ Call buildConnectionsByXML.xql with concordance JSON and sources using basex """
+    """
+    Build concordance XML using BaseX XQuery processing.
+
+    Calls the buildConnectionsByXML.xql script to generate concordance
+    connections between different editions or sources.
+
+    Args:
+        conc_ids: List of concordance identifiers to process
+        sub_div: Subdivision name (empty string for root)
+        vol_slug: Volume identifier/slug
+
+    Returns:
+        The processed concordance XML element
+    """
     tmp_path = vars.LOCAL_PATHS['tmp'] / sub_div if sub_div != "" else vars.LOCAL_PATHS['tmp']
     tmp_path.mkdir(parents=True, exist_ok=True)
     try:
@@ -70,7 +101,18 @@ def build_concordances(conc_ids: list, sub_div: str, vol_slug: str) -> etree.Ele
     print(f"\t[OK] Navigation complete")
     return conc_output
 
+
 def build_edirom(frbr_json: dict):
+    """
+    Build the complete edirom XML structure from FRBR JSON data.
+
+    Processes all works in the FRBR JSON, extracts navigation and concordance
+    information from relations, and generates the final edirom XML structure
+    with work elements, navigation, search windows, and concordances.
+
+    Args:
+        frbr_json: FRBR JSON dictionary with edition_name, vol_slug, and work_list
+    """
     edition_name = frbr_json['edition_name']
     vol_slug = frbr_json['vol_slug']
 

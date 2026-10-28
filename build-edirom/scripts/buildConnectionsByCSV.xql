@@ -1,5 +1,29 @@
 xquery version "3.1";
 
+(:
+  Script: buildConnectionsByCSV.xql
+  Purpose:
+    Build an EDIROM concordance document from a CSV-based mapping between
+    edition measures and source measures. The script reads one or more CSV
+    definitions, matches each source siglum to the corresponding source XML,
+    resolves measure identifiers, and emits plist links pointing to the source
+    measures in the Edirom source collection.
+
+  Inputs:
+    - $propertiesPath      Path to the project properties file.
+    - $csvPathsString     JSON string containing CSV metadata entries.
+    - $sourcesPath         Collection path containing source MEI documents.
+    - $subDiv             Optional subdivision path.
+    - $volSlug            Volume slug used to build the source URI base.
+    - $subGroups          Metadata describing subgroup mappings (currently unused).
+    - $groupsTitleDe      German display title for the generated group names.
+    - $groupsTitleEn      English display title for the generated group names.
+
+  Output:
+    A concordance XML document with group entries and connection plist values
+    pointing to source measures.
+:)
+
 declare namespace mei = "http://www.music-encoding.org/ns/mei";
 declare namespace tei = "http://www.tei-c.org/ns/1.0";
 declare namespace map = "http://www.w3.org/2005/xpath-functions/map";
@@ -18,6 +42,13 @@ declare variable $groupsTitleEn as xs:string external;
 
 (: ####################################### :)
 
+(:
+  Build a single connection element for one edition measure.
+  Each CSV row links an edition measure to one or more corresponding source
+  measures. This function resolves the matching source documents by siglum,
+  finds the referenced MEI measure labels, and assembles the plist URIs used
+  by the generated concordance.
+:)
 declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sources, $editionBaseURI) {
   let $mdivN := tokenize($editionMeasure, '_')[1]
   let $connectionMeasureLabel := tokenize($editionMeasure, '_')[2]
@@ -28,8 +59,9 @@ declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sour
     plist="{
         for $key at $pos in $csvHead
         let $value := $fields[$pos]
-        (: sources - find by siglum in filename with pattern matching to get exact file :)
-        (: Try to match edirom-source_{key}_ first (e.g., edirom-source_B_03.xml), then edirom-source_{key}.xml :)
+        (: Match the source MEI document by siglum in the filename. Try the
+           more specific pattern first (e.g. edirom-source_B_03.xml), then the
+           generic siglum match. :)
         let $sourceDoc := (
           $sources/mei:mei[matches(base-uri(.), concat('edirom-source_', $key, '(_|\.xml)'))][1],
           $sources/mei:mei[contains(base-uri(.), concat('edirom-source_', $key))][1]
@@ -41,7 +73,7 @@ declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sour
           tokenize($value, ';')
         else
           ($value)
-        
+
         return
           if ($source) then
             (
@@ -74,14 +106,16 @@ declare function local:buildConnection($editionMeasure, $csvHead, $fields, $sour
             )
           else
             ()
-      
+
       }"/>
 };
 
 (: ####################################### :)
 (: Variables :)
 
-(: Parse JSON structure from csvPathsString :)
+(: Parse the JSON description of CSV files and collect the source documents for
+   later lookup by siglum. The result is a concordance tree used to build the
+   final EDIROM XML output. :)
 let $csvData := if ($csvPathsString != '') then parse-json($csvPathsString) else ()
 let $sources := try {
   collection($sourcesPath)
@@ -95,7 +129,9 @@ let $editionBaseURI :=
   else
     'xmldb:exist:///db/apps/edirom-content/' || $volSlug || '/sources/'
 
-(: ####################################### :)
+(: The main return value creates the concordance tree. For each CSV entry, the
+   script reads the file, extracts the header row and measure rows, and builds
+   group-level connection records for the edition. :)
 return
   <concordance
     xmlns="http://www.edirom.de/ns/1.3"

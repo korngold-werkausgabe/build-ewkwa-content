@@ -11,14 +11,44 @@ import utils
 
 MEI_NS = vars.NAMESPACES["mei"]
 
+
 def _title_text(title_obj: dict) -> str:
+    """
+    Extract the title text from a title object.
+
+    Args:
+        title_obj: Dictionary with language keys ('de', 'en') or string
+
+    Returns:
+        The title text in German if available, otherwise English, or empty string
+    """
     if not isinstance(title_obj, dict):
         return ""
     return title_obj.get("de") or title_obj.get("en") or ""
 
 
 def extract_expression_struct(work: dict) -> dict:
-    """Collect expression metadata needed to build works.xml from JSON."""
+    """
+    Extract expression metadata needed to build works.xml from JSON.
+
+    This function analyzes a work structure from frbr.json and extracts
+    information about expressions (musical versions/editions) including
+    main expressions and component expressions.
+
+    Args:
+        work: Dictionary containing work data from frbr.json with keys:
+            - type: 'singleton' or 'collection'
+            - expression_list: List of expression dictionaries
+            - component_list: List of sub-works (for collections)
+
+    Returns:
+        Dictionary with expression structure information:
+        - type: Work type ('singleton' or 'collection')
+        - has_expression_components: Whether expressions have components
+        - main_expression: First expression in the list (if any)
+        - expression_ids: List of all expression IDs
+        - component_expression_ids: List of component expression IDs
+    """
     output = {
         "type": work.get("type", ""),
         "has_expression_components": False,
@@ -56,6 +86,21 @@ def extract_expression_struct(work: dict) -> dict:
     return output
 
 def _get_annotation_ids_for_expression(work: dict, expression_id: str, markers: tuple[str, ...] = ("cnl", "rdg", "rdgs")) -> list:
+    """
+    Get annotation IDs associated with a specific expression.
+
+    Searches relation_list for relations of type 'hasPart' that reference
+    the given expression_id, then extracts annotation IDs from the plist
+    based on marker patterns.
+
+    Args:
+        work: Dictionary containing work data with relation_list
+        expression_id: The expression ID to search for
+        markers: Tuple of marker strings to identify annotations
+
+    Returns:
+        List of annotation IDs associated with the expression
+    """
     if not expression_id:
         return []
 
@@ -80,6 +125,19 @@ def _get_annotation_ids_for_expression(work: dict, expression_id: str, markers: 
 
 
 def _merge_annot_fragments(annotation_str: str) -> str:
+    """
+    Merge fragmented annotation XML strings into a single well-formed XML.
+
+    Parses multiple annotation fragments, groups them by their xml:id,
+    and merges their content (typically plist elements) into unified
+    annotation elements.
+
+    Args:
+        annotation_str: XML string containing multiple annotation fragments
+
+    Returns:
+        XML string with merged annotations, or empty string if input is empty
+    """
     if not annotation_str:
         return ""
 
@@ -109,6 +167,21 @@ def _merge_annot_fragments(annotation_str: str) -> str:
 
 
 def build_rdg_list_annotations(rdgl_xml: str, sources_path: str, sub_div: str, vol_slug: str) -> str:
+    """
+    Build rdgList annotations using BaseX XQuery processing.
+
+    This function processes raw annotation XML through a BaseX XQuery script
+    to generate the rdgList section for the works.xml file.
+
+    Args:
+        rdgl_xml: Raw annotation XML string to process
+        sources_path: Path to the sources directory
+        sub_div: Subdivision name (optional)
+        vol_slug: Volume identifier/slug
+
+    Returns:
+        Processed XML string with rdgList annotations, or empty string on error
+    """
     try:
         build_rdgs_xql = vars.SCRIPTS.get("build_rdgs") or vars.SCRIPTS.get("build_tkas")
         if build_rdgs_xql is None:
@@ -145,6 +218,20 @@ def build_rdg_list_annotations(rdgl_xml: str, sources_path: str, sub_div: str, v
 
 
 def _append_critical_remarks(notes_stmt: etree._Element, work: dict, expression_id: str, sub_div: str, vol_slug: str) -> None:
+    """
+    Append critical remarks annotations to a notesStmt element.
+
+    Collects all annotations associated with the given expression ID,
+    processes them through the appropriate annotation builders (rdgList
+    or critical remarks), and appends the merged results to the notesStmt.
+
+    Args:
+        notes_stmt: The notesStmt element to append annotations to
+        work: Work dictionary containing relation_list and expression data
+        expression_id: The expression ID to find annotations for
+        sub_div: Subdivision name for path resolution
+        vol_slug: Volume identifier/slug
+    """
     annotation_ids = _get_annotation_ids_for_expression(work, expression_id)
     if not annotation_ids:
         return
@@ -188,6 +275,23 @@ def _append_critical_remarks(notes_stmt: etree._Element, work: dict, expression_
 
 
 def _build_component_work(template_path: Path, sub_work: dict, index: int, parent_work: dict, sub_div: str, vol_slug: str) -> etree._Element:
+    """
+    Build a component work element from a template.
+
+    Parses the template XML, sets the work ID and n attribute, updates
+    the title, and appends critical remarks annotations for the main expression.
+
+    Args:
+        template_path: Path to the MEI work template file
+        sub_work: Sub-work dictionary with id, title, and expression_list
+        index: Index of this component work
+        parent_work: Parent work dictionary for annotation lookup
+        sub_div: Subdivision name for annotation paths
+        vol_slug: Volume identifier/slug
+
+    Returns:
+        The populated component work element
+    """
     parser = etree.XMLParser(remove_blank_text=True)
     tree = etree.parse(str(template_path), parser)
     component_element = tree.getroot()
@@ -214,6 +318,20 @@ def _build_component_work(template_path: Path, sub_work: dict, index: int, paren
 
 
 def _build_work_element(work: dict, vol_slug: str) -> tuple[etree._Element, str]:
+    """
+    Build a work element from a template with expressions and annotations.
+
+    Parses the work template, sets work-level attributes (id, n, title),
+    processes the main expression and its components, and appends critical
+    remarks annotations. Handles both singleton and collection work types.
+
+    Args:
+        work: Work dictionary with id, type, title, expression_list, component_list
+        vol_slug: Volume identifier/slug for annotation path resolution
+
+    Returns:
+        Tuple of (work_element, sub_div) where sub_div is extracted from main expression
+    """
     template_path = vars.TEMPLATES["template_work"]
     parser = etree.XMLParser(remove_blank_text=True)
     tree = etree.parse(str(template_path), parser)
@@ -305,6 +423,21 @@ def _build_work_element(work: dict, vol_slug: str) -> tuple[etree._Element, str]
 
 
 def _assemble_works_xml(work_elements: list, sub_div: str, edition_name: str) -> bool:
+    """
+    Assemble all work elements into the final works.xml file.
+
+    Loads the works template, updates the edition statement with the
+    edition name, appends all work elements to the workList, and writes
+    the result to the appropriate subdirectory.
+
+    Args:
+        work_elements: List of work elements to include
+        sub_div: Subdivision name for output path
+        edition_name: Name of the edition for the editionStmt
+
+    Returns:
+        True if the file was written successfully, False otherwise
+    """
     try:
         template_path = vars.TEMPLATES["template_edirom-works"]
         tree = etree.parse(str(template_path))
@@ -342,7 +475,21 @@ def _assemble_works_xml(work_elements: list, sub_div: str, edition_name: str) ->
 
 
 def build_critical_remarks(cnl_xml: str, sources_path: str, sub_div: str, vol_slug: str) -> str:
-    """Call buildEdiromTkAs.xql and return generated annot fragments."""
+    """
+    Build critical remarks annotations using BaseX XQuery processing.
+
+    This function processes critical note XML through a BaseX XQuery script
+    to generate annotation fragments for the works.xml file.
+
+    Args:
+        cnl_xml: Raw critical note XML string to process
+        sources_path: Path to the sources directory
+        sub_div: Subdivision name (optional)
+        vol_slug: Volume identifier/slug
+
+    Returns:
+        Processed XML string with annotation fragments, or empty string on error
+    """
     try:
         build_tkas_xql = vars.SCRIPTS["build_tkas"]
         sources_path_abs = Path(sources_path).resolve()
@@ -374,7 +521,16 @@ def build_critical_remarks(cnl_xml: str, sources_path: str, sub_div: str, vol_sl
 
 
 def build_works_file(frbr_json: dict) -> None:
-    """Build per-subDiv works.xml files from FRBR JSON."""
+    """
+    Build per-subDiv works.xml files from FRBR JSON.
+
+    Processes all works in the FRBR JSON structure, builds work elements
+    with their expressions and annotations, groups them by subdivision,
+    and assembles the final works.xml files.
+
+    Args:
+        frbr_json: FRBR JSON dictionary with work_list, edition_name, vol_slug
+    """
     work_list = frbr_json.get("work_list", [])
     edition_name = frbr_json.get("edition_name", "")
     vol_slug = frbr_json.get("vol_slug", "")

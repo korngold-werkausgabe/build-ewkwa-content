@@ -1,5 +1,27 @@
 xquery version "3.1";
 
+(:
+  Script: buildEdiromRdgs.xql
+  Purpose:
+    Resolve editorial note references against source MEI documents and emit
+    EDIROM-style reading or concordance data. The script matches note measures,
+    measure ranges, and symbolic pitch information to their corresponding source
+    URIs, then assembles the final XML structure for display in the edition.
+
+  Inputs:
+    - $cnList         Optional list of concordance identifiers or measure
+                      references.
+    - $cnListFile     Optional external file providing the concordance list.
+    - $collectionPath Collection containing target XML records.
+    - $sourcesPath    Collection of source MEI documents.
+    - $subDiv         Optional subdivision path.
+    - $volumeName     Volume identifier used when building source URIs.
+
+  Output:
+    Normalized measure references and XML fragments linking notes to their
+    source measures and textual musical content.
+:)
+
 declare namespace edirom = "http://www.edirom.de/ns/1.3";
 declare namespace mei = "http://www.music-encoding.org/ns/mei";
 declare namespace transform = "http://exist-db.org/xquery/transform";
@@ -16,6 +38,7 @@ declare variable $sourcesPath as xs:string external;
 declare variable $subDiv as xs:string external;
 declare variable $volumeName as xs:string external;
 
+(: Build the canonical source path for a volume and optional subdivision. :)
 declare function local:composePath($volume as xs:string, $subDiv as xs:string?, $rest as xs:string) as xs:string {
   let $subDivPath :=
     if ($subDiv and $subDiv != "" and $subDiv != "None" and $subDiv != $volume)
@@ -24,6 +47,7 @@ declare function local:composePath($volume as xs:string, $subDiv as xs:string?, 
   return "xmldb:exist:///db/apps/edirom-content/" || $volume || $subDivPath || "/" || $rest
 };
 
+(: Extract the file name from a source document for constructing stable URIs. :)
 declare function local:sourceFileName($doc as node()?) as xs:string {
   if (empty($doc)) then ''
   else

@@ -1,3 +1,13 @@
+"""
+Global variables and configuration for the build-edirom pipeline.
+
+This module defines XML namespaces, local paths, script paths, and template
+paths used throughout the build-edirom pipeline for musicological editions.
+
+The configuration is loaded once at module import and provides centralized
+access to all path and namespace constants used by the pipeline modules.
+"""
+
 from pathlib import Path
 
 # XML namespaces

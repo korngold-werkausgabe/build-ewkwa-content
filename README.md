@@ -2,6 +2,28 @@
 
 Automated process for creating Edirom edition XAR files from structured XML documents.
 
+## Citation
+
+If you use this software in your research, please cite it as follows:
+
+> Silke Reich (2026). Build Content Pipeline for the Korngold-Werkausgabe (Version 1.0.0) [Software]. Zenodo. https://doi.org/10.5281/zenodo.xxxxxx
+
+For BibTeX users:
+
+```bibtex
+@software{reich_2026_xxxxxx,
+  author       = {Silke Reich},
+  title        = {Build Content Pipeline for the Korngold-Werkausgabe},
+  year         = 2026,
+  publisher    = {Zenodo},
+  version      = {1.0.0},
+  doi          = {10.5281/zenodo.xxxxxx},
+  url          = {https://github.com/Korngold-Werkausgabe/build-ewkwa-content}
+}
+```
+
+See [CITATION.cff](CITATION.cff) for more information.
+
 ## Installation as a Submodule
 
 To integrate this repository into a volume project (series/volume repository) as a submodule:

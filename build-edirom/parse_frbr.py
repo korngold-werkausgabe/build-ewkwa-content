@@ -9,6 +9,10 @@ from pathlib import Path
 This module provides functions to parse and extract information from a FRBR tree
 represented in an MEI XML document. It includes utilities to collect titles, identifiers,
 content items, component expressions, manifestations, and relations from the XML structure.
+
+The module follows the FRBR (Functional Requirements for Bibliographic Records) model
+to extract work, expression, and manifestation data from MEI XML and convert it into
+structured dictionaries suitable for JSON serialization and further processing.
 """
 
 
@@ -30,6 +34,9 @@ def _first_text(node, xpath_expr: str) -> str:
 def _collect_title_obj(node, title_xpath: str = './mei:title') -> dict:
     """
     Collects the title information from the given XML node and returns it as a dictionary with language keys.
+
+    Extracts all title elements matching the XPath expression, maps them by language (de/en),
+    and ensures both languages are present by copying if one is missing.
 
     Args:
         node: The XML node containing the title information.
@@ -278,6 +285,7 @@ def _collect_works_in_order(works) -> list:
         A list of dictionaries, each containing information about a work.
     """
     return [_build_work_entry(work) for work in works]
+
 
 def _return_manifestation_xml_by_id(manifestation_id: str) -> etree._Element:
     try:
