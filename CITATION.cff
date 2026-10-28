@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Build Content Pipeline for the Korngold-Werkausgabe"
+authors:
+  - name: "Silke Reich"
+    orcid: "0009-0007-8817-0299"
+date-released: 2026-10-28
+version: "1.0.0"
+doi: "10.5281/zenodo.xxxxxx"
+url: "https://github.com/Korngold-Werkausgabe/build-ewkwa-content"
+description: "Automated build pipeline for creating Edirom edition XAR files from structured XML documents. Used for the Korngold-Werkausgabe project."
+keywords:
+  - "musicology"
+  - "edirom"
+  - "mei"
+  - "digital edition"
+  - "scholarly edition"
+license: "MIT"
